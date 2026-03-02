@@ -73,6 +73,26 @@ class Settings(BaseSettings):
         description="Subtitle template: default|modern|karaoke|modern_karaoke",
     )
 
+    title_provider: str = Field(
+        "heuristic",
+        description="Title generation provider: heuristic|openai",
+    )
+
+    openai_api_key: str = Field(
+        "",
+        description="OpenAI API key used when title_provider=openai",
+    )
+
+    openai_model: str = Field(
+        "gpt-4.1-mini",
+        description="OpenAI model used when title_provider=openai",
+    )
+
+    openai_base_url: str = Field(
+        "https://api.openai.com/v1",
+        description="OpenAI API base URL",
+    )
+
     target_fps: int = Field(30, ge=1, le=60)
 
     enable_loudnorm: bool = Field(

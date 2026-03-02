@@ -13,6 +13,7 @@ from .pipeline.context import JobContext
 from .pipeline.download import download_youtube_video
 from .pipeline.segment import segment_candidates, write_clips_json
 from .pipeline.subtitles import write_srt
+from .pipeline.title_generator import generate_title_candidates_for_clip
 from .pipeline.transcribe import transcribe_audio, write_transcript_json
 from .pipeline.word_alignment import (
     align_words_with_whisperx,
@@ -240,6 +241,52 @@ def process_job(
             video_path=ctx.source_video_path,
             language=language,
         )
+
+        current_stage = "titles"
+        current_progress = 80
+        _best_effort_progress_callback(
+            ctx=ctx,
+            stage=current_stage,
+            progress_percent=current_progress,
+            message="Generating viral titles",
+            timeout_seconds=settings.callback_timeout_seconds,
+            max_retries=settings.callback_max_retries,
+            retry_backoff_seconds=settings.callback_retry_backoff_seconds,
+            logger=logger,
+        )
+
+        title_candidates_by_clip_id: dict[str, dict] = {}
+        updated_clips = []
+
+        for c in clips:
+            res = generate_title_candidates_for_clip(
+                clip=c,
+                segments=segments,
+                language=language,
+                provider=settings.title_provider,
+                openai_api_key=settings.openai_api_key,
+                openai_model=settings.openai_model,
+                openai_base_url=settings.openai_base_url,
+                logger=logger.bind(clip_id=c.clip_id),
+            )
+
+            title_payload = res.to_payload()
+            title_candidates_by_clip_id[c.clip_id] = title_payload
+
+            best_title = res.candidates[0].title if res.candidates else c.title
+
+            updated_clips.append(
+                type(c)(
+                    clip_id=c.clip_id,
+                    start_seconds=c.start_seconds,
+                    end_seconds=c.end_seconds,
+                    score=c.score,
+                    reason=c.reason,
+                    title=best_title,
+                )
+            )
+
+        clips = updated_clips
         write_clips_json(clips=clips, output_path=ctx.clips_json_path)
 
         current_stage = "render_clips"
@@ -267,13 +314,20 @@ def process_job(
             word_timings=words,
         )
 
+        clip_artifacts: list[ClipArtifact] = []
+        for c in rendered:
+            clip_id = str(c.get("clip_id") or "")
+            if clip_id and clip_id in title_candidates_by_clip_id:
+                c = {**c, "title_candidates": title_candidates_by_clip_id[clip_id]}
+            clip_artifacts.append(ClipArtifact(**c))
+
         artifacts = JobArtifacts(
             source_video_path=str(ctx.source_video_path),
             audio_path=str(ctx.audio_path),
             transcript_json_path=str(ctx.transcript_json_path),
             subtitles_srt_path=str(ctx.subtitles_srt_path),
             clips_json_path=str(ctx.clips_json_path),
-            clips=[ClipArtifact(**c) for c in rendered],
+            clips=clip_artifacts,
         )
 
         completed_payload = JobCallbackPayload(
