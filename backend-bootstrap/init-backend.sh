@@ -3,6 +3,27 @@ set -euo pipefail
 
 cd /var/www/backend
 
+is_production_env() {
+  [ "${APP_ENV:-}" = "production" ]
+}
+
+if is_production_env; then
+  if [ -z "${INTERNAL_API_SECRET:-}" ] || [ "${INTERNAL_API_SECRET}" = "change-me" ]; then
+    echo "[backend_init] ERROR: INTERNAL_API_SECRET must be set to a non-default value in production" >&2
+    exit 1
+  fi
+
+  if [ -z "${VIDEO_WORKER_CALLBACK_SECRET:-}" ] || [ "${VIDEO_WORKER_CALLBACK_SECRET}" = "change-me-too" ]; then
+    echo "[backend_init] ERROR: VIDEO_WORKER_CALLBACK_SECRET must be set to a non-default value in production" >&2
+    exit 1
+  fi
+
+  if [ -z "${ADMIN_PASSWORD:-}" ] || [ "${ADMIN_PASSWORD}" = "password" ]; then
+    echo "[backend_init] ERROR: ADMIN_PASSWORD must be changed from the default in production" >&2
+    exit 1
+  fi
+fi
+
 fix_env_perms() {
   if [ -f .env ]; then
     chown "${DOCKER_UID:-1000}":"${DOCKER_GID:-1000}" .env 2>/dev/null || true

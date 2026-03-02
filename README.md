@@ -32,9 +32,29 @@ cp .env.example .env
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Identifiants par défaut (voir `.env`):
-- email: `admin@example.com`
-- password: `password`
+Variables à définir (au minimum) dans `.env` en production:
+- `DOMAIN`, `ACME_EMAIL`, `APP_URL`
+- `INTERNAL_API_SECRET` (doit être un secret long, non défaut)
+- `VIDEO_WORKER_CALLBACK_SECRET` (doit être un secret long, non défaut)
+- `ADMIN_PASSWORD` (ne doit pas rester `password`)
+- `DB_PASSWORD`, `DB_ROOT_PASSWORD`
+
+Identifiants admin (définis dans `.env`):
+- email: `ADMIN_EMAILS`
+- password: `ADMIN_PASSWORD`
+
+### (Optionnel) BasicAuth Caddy
+
+Recommandé si l'app est "interne" (V1).
+
+1) Générez un hash de mot de passe:
+
+```bash
+docker run --rm caddy:2-alpine caddy hash-password --plaintext 'your-password'
+```
+
+2) Renseignez `BASIC_AUTH_USER` et `BASIC_AUTH_HASH` dans `.env`
+3) Décommentez le bloc `basicauth` dans `Caddyfile`
 
 ### Activer le video-worker
 

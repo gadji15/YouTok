@@ -41,8 +41,8 @@ services:
       - ./backend-bootstrap:/bootstrap:ro
       - video_worker_shared:/shared
     environment:
-      APP_ENV: ${APP_ENV:-production}
-      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_ENV: production
+      APP_DEBUG: "false"
       APP_URL: ${APP_URL}
       HOME: /tmp
       XDG_CONFIG_HOME: /tmp

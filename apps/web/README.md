@@ -16,7 +16,7 @@ make up
 # Required (server-only) env vars used to talk to Laravel internal API.
 # Defaults match docker-compose.yml.
 export LARAVEL_BASE_URL="http://127.0.0.1:8080"
-export INTERNAL_API_SECRET="change-me"
+export INTERNAL_API_SECRET="please-change-to-a-long-random-string"
 
 npm install
 npm run dev
