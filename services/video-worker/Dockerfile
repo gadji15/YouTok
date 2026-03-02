@@ -10,9 +10,12 @@ RUN apt-get update \
         libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
+ARG PYTORCH_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu
+
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DEFAULT_TIMEOUT=120
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_EXTRA_INDEX_URL=${PYTORCH_EXTRA_INDEX_URL}
 
 # Note: Whisper (and torch wheels) are heavy; keep them in earlier layers so
 # changes to app deps don't force reinstalling torch.
