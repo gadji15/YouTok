@@ -22,6 +22,8 @@ services:
       context: ./apps/web
       dockerfile: Dockerfile
     restart: unless-stopped
+    ports:
+      - "3000:3000"
     environment:
       # Next server calls Laravel over the Docker network.
       LARAVEL_BASE_URL: http://backend:8000
