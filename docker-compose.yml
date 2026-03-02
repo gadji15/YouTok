@@ -1,0 +1,201 @@
+x-backend-env: &backend_env
+  APP_ENV: ${APP_ENV:-local}
+  APP_DEBUG: ${APP_DEBUG:-"true"}
+  APP_URL: ${APP_URL:-http://localhost:8080}
+
+  # Ensure tools like "artisan tinker" can write their config/cache
+  HOME: /tmp
+  XDG_CONFIG_HOME: /tmp
+
+  # Used by the worker to call back into Laravel
+  WORKER_CALLBACK_URL: ${WORKER_CALLBACK_URL:-http://backend:8000/api/worker/callback}
+
+  # Shared volume root inside backend containers
+  SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/shared}
+
+  DB_CONNECTION: ${DB_CONNECTION:-mysql}
+  DB_HOST: ${DB_HOST:-db}
+  DB_PORT: ${DB_PORT:-3306}
+  DB_DATABASE: ${DB_DATABASE:-backend}
+  DB_USERNAME: ${DB_USERNAME:-backend}
+  DB_PASSWORD: ${DB_PASSWORD:-backend}
+
+  QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+
+  # Avoid requiring DB tables for sessions/cache on the very first run
+  SESSION_DRIVER: ${SESSION_DRIVER:-file}
+  CACHE_STORE: ${CACHE_STORE:-file}
+
+  # Admin-only access controls
+  ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@example.com}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-password}
+  INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-change-me}
+
+  # video-worker integration (optional)
+  VIDEO_WORKER_BASE_URL: ${VIDEO_WORKER_BASE_URL:-}
+  VIDEO_WORKER_API_KEY: ${VIDEO_WORKER_API_KEY:-}
+  VIDEO_WORKER_CALLBACK_SECRET: ${VIDEO_WORKER_CALLBACK_SECRET:-change-me-too}
+
+  # tiktok-bot integration (optional)
+  TIKTOK_BOT_BASE_URL: ${TIKTOK_BOT_BASE_URL:-}
+
+  # Expose UID/GID to init script (for chown when bootstrapping the bind mount)
+  DOCKER_UID: ${DOCKER_UID:-1000}
+  DOCKER_GID: ${DOCKER_GID:-1000}
+
+x-backend-build: &backend_build
+  context: ./docker/backend
+  dockerfile: Dockerfile
+
+x-backend-user: &backend_user "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+
+services:
+  backend_init:
+    build: *backend_build
+    # Run init as root so it can chown the bind-mounted ./backend directory on first boot.
+    user: "0:0"
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+      - ./backend-bootstrap:/bootstrap:ro
+      - video_worker_shared:/shared
+    environment:
+      <<: *backend_env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["/bin/bash", "/bootstrap/init-backend.sh"]
+
+  backend:
+    build: *backend_build
+    user: *backend_user
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+      - video_worker_shared:/shared
+    environment:
+      <<: *backend_env
+    depends_on:
+      backend_init:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8000"
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+
+  queue:
+    build: *backend_build
+    user: *backend_user
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+      - video_worker_shared:/shared
+    environment:
+      <<: *backend_env
+    depends_on:
+      backend_init:
+        condition: service_completed_successfully
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=90"]
+
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-backend}
+      MYSQL_USER: ${DB_USERNAME:-backend}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-backend}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  video-worker-api:
+    profiles: ["video-worker"]
+    build:
+      context: ./services/video-worker
+      dockerfile: Dockerfile
+    environment:
+      VIDEO_WORKER_REDIS_URL: ${VIDEO_WORKER_REDIS_URL:-redis://redis:6379/0}
+      VIDEO_WORKER_QUEUE_NAME: ${VIDEO_WORKER_QUEUE_NAME:-video-worker}
+      VIDEO_WORKER_STORAGE_PATH: ${VIDEO_WORKER_STORAGE_PATH:-/shared/video-worker}
+      VIDEO_WORKER_WHISPER_MODEL: ${VIDEO_WORKER_WHISPER_MODEL:-base}
+      VIDEO_WORKER_WHISPER_DEVICE: ${VIDEO_WORKER_WHISPER_DEVICE:-auto}
+      VIDEO_WORKER_SUBTITLE_TEMPLATE: ${VIDEO_WORKER_SUBTITLE_TEMPLATE:-default}
+      VIDEO_WORKER_TARGET_FPS: ${VIDEO_WORKER_TARGET_FPS:-30}
+      VIDEO_WORKER_ENABLE_LOUDNORM: ${VIDEO_WORKER_ENABLE_LOUDNORM:-false}
+      VIDEO_WORKER_LOG_LEVEL: ${VIDEO_WORKER_LOG_LEVEL:-INFO}
+      VIDEO_WORKER_API_KEY: ${VIDEO_WORKER_API_KEY:-}
+      VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST: ${VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST:-}
+    volumes:
+      - video_worker_shared:/shared
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["uvicorn", "video_worker.api:app", "--host=0.0.0.0", "--port=8000"]
+
+  video-worker-worker:
+    profiles: ["video-worker"]
+    build:
+      context: ./services/video-worker
+      dockerfile: Dockerfile
+    environment:
+      VIDEO_WORKER_REDIS_URL: ${VIDEO_WORKER_REDIS_URL:-redis://redis:6379/0}
+      VIDEO_WORKER_QUEUE_NAME: ${VIDEO_WORKER_QUEUE_NAME:-video-worker}
+      VIDEO_WORKER_STORAGE_PATH: ${VIDEO_WORKER_STORAGE_PATH:-/shared/video-worker}
+      VIDEO_WORKER_WHISPER_MODEL: ${VIDEO_WORKER_WHISPER_MODEL:-base}
+      VIDEO_WORKER_WHISPER_DEVICE: ${VIDEO_WORKER_WHISPER_DEVICE:-auto}
+      VIDEO_WORKER_SUBTITLE_TEMPLATE: ${VIDEO_WORKER_SUBTITLE_TEMPLATE:-default}
+      VIDEO_WORKER_TARGET_FPS: ${VIDEO_WORKER_TARGET_FPS:-30}
+      VIDEO_WORKER_ENABLE_LOUDNORM: ${VIDEO_WORKER_ENABLE_LOUDNORM:-false}
+      VIDEO_WORKER_LOG_LEVEL: ${VIDEO_WORKER_LOG_LEVEL:-INFO}
+      VIDEO_WORKER_API_KEY: ${VIDEO_WORKER_API_KEY:-}
+      VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST: ${VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST:-}
+    volumes:
+      - video_worker_shared:/shared
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "video_worker.worker"]
+
+  redis:
+    profiles: ["video-worker", "tiktok-bot"]
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  tiktok-bot:
+    profiles: ["tiktok-bot"]
+    build:
+      context: ./services/tiktok-bot
+      dockerfile: Dockerfile
+    environment:
+      PORT: 3000
+      PUBLISH_MODE: ${PUBLISH_MODE:-stub}
+      # Shared secret used by backend + tiktok-bot (header X-Internal-Secret)
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-change-me}
+
+      # Persisted session cookies/state
+      COOKIE_DIR: /app/storage/cookies
+
+      # Clips are read from the shared volume (mounted read-only)
+      PUBLISH_CLIP_ROOT: /shared
+
+      PUBLISH_REDIS_URL: ${PUBLISH_REDIS_URL:-redis://redis:6379/1}
+      PUBLISH_ARTIFACT_DIR: /app/storage/artifacts
+    volumes:
+      - ./services/tiktok-bot/storage:/app/storage
+      - video_worker_shared:/shared:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:
+  video_worker_shared:

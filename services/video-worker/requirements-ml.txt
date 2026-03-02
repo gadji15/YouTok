@@ -1,0 +1,7 @@
+# Heavy ML deps (optional for running the full pipeline)
+# Note: openai-whisper relies on torch; pip will typically install a CPU torch wheel.
+# For GPU builds, install an appropriate torch build in your image/environment.
+-r requirements-whisper.txt
+
+# Optional video CV deps for face detection / auto-reframe.
+-r requirements-cv.txt

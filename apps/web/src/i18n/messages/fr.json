@@ -1,0 +1,276 @@
+{
+  "app": {
+    "name": "YouTok",
+    "nav": {
+      "dashboard": "Tableau de bord",
+      "projects": "Projets",
+      "clips": "Clips",
+      "billing": "Facturation",
+      "settings": "Paramètres"
+    },
+    "topbar": {
+      "account": "Compte",
+      "openNavigation": "Ouvrir la navigation"
+    }
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "subtitle": "Suivez vos projets et l'état du pipeline.",
+    "kpi": {
+      "queued": "En attente",
+      "processing": "En cours",
+      "completed": "Terminés",
+      "failed": "En erreur"
+    },
+    "latest": {
+      "title": "Projets récents",
+      "subtitle": "Projets mis à jour récemment.",
+      "empty": "Aucun projet pour le moment.",
+      "new": "Nouveau projet"
+    }
+  },
+  "projects": {
+    "title": "Projets",
+    "subtitle": "Créez un projet et suivez le pipeline en temps réel.",
+    "new": "Nouveau projet",
+    "searchPlaceholder": "Rechercher…",
+    "filters": {
+      "all": "Tous",
+      "queued": "En attente",
+      "processing": "En cours",
+      "completed": "Terminés",
+      "failed": "En erreur"
+    },
+    "table": {
+      "name": "Projet",
+      "status": "Statut",
+      "updated": "Mise à jour"
+    }
+  },
+  "projectNew": {
+    "title": "Nouveau projet",
+    "subtitle": "Collez une URL YouTube et lancez le traitement.",
+    "back": "Retour",
+    "form": {
+      "nameLabel": "Nom du projet",
+      "namePlaceholder": "Ex: Best of Podcast #12",
+      "urlLabel": "URL YouTube",
+      "urlPlaceholder": "https://www.youtube.com/watch?v=…",
+      "urlValid": "URL valide",
+      "urlInvalid": "URL invalide",
+      "optionsTitle": "Options",
+      "optionsHint": "Vous pourrez ajuster plus finement après (V1.1).",
+      "languageLabel": "Langue",
+      "clipLengthLabel": "Durée du clip (sec)",
+      "subtitlesLabel": "Sous-titres",
+      "subtitlesOn": "Activés",
+      "subtitlesOff": "Désactivés",
+      "create": "Créer le projet"
+    }
+  },
+  "project": {
+    "back": "Retour aux projets",
+    "status": {
+      "queued": "En attente",
+      "processing": "En cours",
+      "completed": "Terminé",
+      "failed": "En erreur"
+    },
+    "actions": {
+      "retry": "Relancer",
+      "delete": "Supprimer"
+    },
+    "overview": {
+      "title": "Aperçu",
+      "subtitle": "Progression et étapes clés.",
+      "stage": "Étape",
+      "progress": "Progression"
+    },
+    "stages": {
+      "download": "Téléchargement",
+      "transcribe": "Transcription",
+      "segment": "Segmentation",
+      "render": "Rendu",
+      "done": "Terminé"
+    },
+    "artifacts": {
+      "title": "Artefacts",
+      "subtitle": "Téléchargez les artefacts générés par le pipeline."
+    },
+    "clipStatus": {
+      "ready": "Prêt",
+      "pending": "En cours",
+      "failed": "Erreur"
+    },
+    "events": {
+      "title": "Événements pipeline",
+      "subtitle": "Historique des étapes et messages.",
+      "empty": "Aucun événement pour le moment."
+    },
+    "clips": {
+      "title": "Clips",
+      "subtitle": "Les clips générés apparaîtront ici.",
+      "empty": "Aucun clip généré pour le moment.",
+      "subtitles": {
+        "on": "Sous-titres",
+        "off": "Sans sous-titres"
+      },
+      "titleSuggestion": "Titre suggéré",
+      "copyTitle": "Copier",
+      "copied": "Copié",
+      "open": "Ouvrir"
+    }
+  },
+  "billing": {
+    "title": "Facturation",
+    "subtitle": "Gérez votre abonnement, votre usage et vos factures.",
+    "plan": {
+      "title": "Plan actuel",
+      "subtitle": "Modifiez votre plan à tout moment.",
+      "badge": "Essai",
+      "priceHint": "par mois",
+      "upgrade": "Mettre à niveau",
+      "manage": "Gérer"
+    },
+    "usage": {
+      "title": "Usage",
+      "value": "{used}/{included}",
+      "hint": "Les quotas seront appliqués quand Stripe sera branché."
+    },
+    "payment": {
+      "title": "Paiement",
+      "subtitle": "Méthode de paiement et email de facturation.",
+      "methodLabel": "Méthode",
+      "billingEmailLabel": "Email",
+      "update": "Mettre à jour"
+    },
+    "invoices": {
+      "title": "Factures",
+      "subtitle": "Historique de vos factures.",
+      "colDate": "Date",
+      "colAmount": "Montant",
+      "colStatus": "Statut"
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "subtitle": "Préférences, profil et workspace.",
+    "profile": {
+      "title": "Profil",
+      "subtitle": "Informations de compte.",
+      "badge": "Démo",
+      "nameLabel": "Nom",
+      "emailLabel": "Email",
+      "save": "Enregistrer"
+    },
+    "workspace": {
+      "title": "Workspace",
+      "subtitle": "Paramètres du workspace et notifications.",
+      "slugLabel": "Sous-domaine",
+      "notificationsTitle": "Notifications",
+      "notificationsHint": "Recevez des alertes quand un projet est terminé.",
+      "save": "Sauvegarder"
+    },
+    "theme": {
+      "title": "Thème",
+      "subtitle": "Choisissez l’apparence de l’application sur cet appareil.",
+      "options": {
+        "system": "Système",
+        "light": "Clair",
+        "dark": "Sombre"
+      }
+    },
+    "danger": {
+      "title": "Zone dangereuse",
+      "subtitle": "Actions irréversibles.",
+      "actionTitle": "Supprimer le workspace",
+      "actionHint": "Supprime tous les projets et clips.",
+      "action": "Supprimer"
+    }
+  },
+  "admin": {
+    "title": "Admin",
+    "subtitle": "Console plateforme (réservée).",
+    "badge": "Interne",
+    "placeholder": {
+      "title": "À venir",
+      "subtitle": "Cette section sera branchée au backend.",
+      "note": "On ajoutera l'accès super-admin et l'impersonation.",
+      "cta": "Action admin"
+    }
+  },
+  "clips": {
+    "title": "Clips",
+    "subtitle": "Parcourez, recherchez et téléchargez les clips générés depuis vos projets.",
+    "listTitle": "Tous les clips",
+    "searchPlaceholder": "Rechercher des clips…",
+    "count": "{shown} sur {total}",
+    "countEmpty": "Aucun clip",
+    "filters": {
+      "all": "Tous",
+      "pending": "En cours",
+      "processing": "En cours",
+      "ready": "Prêt",
+      "failed": "En erreur"
+    },
+    "view": {
+      "table": "Tableau",
+      "cards": "Cartes"
+    },
+    "table": {
+      "clip": "Clip",
+      "project": "Projet",
+      "status": "Statut",
+      "duration": "Durée",
+      "created": "Créé"
+    },
+    "cards": {
+      "duration": "Durée",
+      "created": "Créé"
+    },
+    "empty": {
+      "title": "Aucun clip",
+      "subtitle": "Créez un projet pour générer des clips, puis revenez ici pour les consulter.",
+      "action": "Voir les projets"
+    },
+    "noResults": {
+      "title": "Aucun clip ne correspond à votre recherche",
+      "subtitle": "Essayez un autre mot-clé ou réinitialisez les filtres.",
+      "reset": "Réinitialiser"
+    }
+  },
+  "clip": {
+    "back": "Retour",
+    "title": "Clip {id}",
+    "subtitle": "Prévisualisation, métadonnées et actions.",
+    "status": {
+      "pending": "En cours",
+      "processing": "En cours",
+      "ready": "Prêt",
+      "failed": "En erreur"
+    },
+    "preview": {
+      "title": "Aperçu",
+      "subtitle": "La vidéo apparaîtra ici."
+    },
+    "progress": {
+      "title": "Traitement",
+      "value": "{value}%"
+    },
+    "meta": {
+      "title": "Détails",
+      "subtitle": "Informations du clip.",
+      "clipId": "ID",
+      "created": "Créé",
+      "duration": "Durée",
+      "format": "Format"
+    },
+    "actions": {
+      "title": "Actions",
+      "subtitle": "Téléchargements et liens.",
+      "download": "Télécharger",
+      "copyLink": "Copier le lien",
+      "openInNewTab": "Ouvrir dans un nouvel onglet"
+    }
+  }
+}

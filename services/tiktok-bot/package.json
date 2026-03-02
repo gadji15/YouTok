@@ -1,0 +1,21 @@
+{
+  "name": "tiktok-bot",
+  "version": "0.2.0",
+  "private": true,
+  "description": "TikTok publishing bot service.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bullmq": "^5.41.0",
+    "express": "^5.2.1",
+    "ioredis": "^5.4.1",
+    "playwright": "^1.58.2"
+  }
+}

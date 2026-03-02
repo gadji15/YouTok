@@ -1,0 +1,229 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER:-}
+      BASIC_AUTH_HASH: ${BASIC_AUTH_HASH:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Next server calls Laravel over the Docker network.
+      LARAVEL_BASE_URL: http://backend:8000
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
+      NODE_ENV: production
+    depends_on:
+      - backend
+
+  backend_init:
+    build:
+      context: ./docker/backend
+      dockerfile: Dockerfile
+    user: "0:0"
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+      - ./backend-bootstrap:/bootstrap:ro
+      - video_worker_shared:/shared
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL}
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp
+      WORKER_CALLBACK_URL: ${WORKER_CALLBACK_URL:-http://backend:8000/api/worker/callback}
+      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/shared}
+      DB_CONNECTION: ${DB_CONNECTION:-mysql}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE:-backend}
+      DB_USERNAME: ${DB_USERNAME:-backend}
+      DB_PASSWORD: ${DB_PASSWORD}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      SESSION_DRIVER: ${SESSION_DRIVER:-file}
+      CACHE_STORE: ${CACHE_STORE:-file}
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
+      VIDEO_WORKER_BASE_URL: ${VIDEO_WORKER_BASE_URL:-http://video-worker-api:8000}
+      VIDEO_WORKER_API_KEY: ${VIDEO_WORKER_API_KEY:-}
+      VIDEO_WORKER_CALLBACK_SECRET: ${VIDEO_WORKER_CALLBACK_SECRET}
+      DOCKER_UID: ${DOCKER_UID:-1000}
+      DOCKER_GID: ${DOCKER_GID:-1000}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["/bin/bash", "/bootstrap/init-backend.sh"]
+
+  backend:
+    build:
+      context: ./docker/backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+      - video_worker_shared:/shared
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL}
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp
+      WORKER_CALLBACK_URL: ${WORKER_CALLBACK_URL:-http://backend:8000/api/worker/callback}
+      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/shared}
+      DB_CONNECTION: ${DB_CONNECTION:-mysql}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE:-backend}
+      DB_USERNAME: ${DB_USERNAME:-backend}
+      DB_PASSWORD: ${DB_PASSWORD}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      SESSION_DRIVER: ${SESSION_DRIVER:-file}
+      CACHE_STORE: ${CACHE_STORE:-file}
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
+      VIDEO_WORKER_BASE_URL: ${VIDEO_WORKER_BASE_URL:-http://video-worker-api:8000}
+      VIDEO_WORKER_API_KEY: ${VIDEO_WORKER_API_KEY:-}
+      VIDEO_WORKER_CALLBACK_SECRET: ${VIDEO_WORKER_CALLBACK_SECRET}
+      DOCKER_UID: ${DOCKER_UID:-1000}
+      DOCKER_GID: ${DOCKER_GID:-1000}
+    depends_on:
+      backend_init:
+        condition: service_completed_successfully
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+
+  queue:
+    build:
+      context: ./docker/backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+      - video_worker_shared:/shared
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL}
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp
+      WORKER_CALLBACK_URL: ${WORKER_CALLBACK_URL:-http://backend:8000/api/worker/callback}
+      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/shared}
+      DB_CONNECTION: ${DB_CONNECTION:-mysql}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE:-backend}
+      DB_USERNAME: ${DB_USERNAME:-backend}
+      DB_PASSWORD: ${DB_PASSWORD}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      SESSION_DRIVER: ${SESSION_DRIVER:-file}
+      CACHE_STORE: ${CACHE_STORE:-file}
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
+      VIDEO_WORKER_BASE_URL: ${VIDEO_WORKER_BASE_URL:-http://video-worker-api:8000}
+      VIDEO_WORKER_API_KEY: ${VIDEO_WORKER_API_KEY:-}
+      VIDEO_WORKER_CALLBACK_SECRET: ${VIDEO_WORKER_CALLBACK_SECRET}
+      DOCKER_UID: ${DOCKER_UID:-1000}
+      DOCKER_GID: ${DOCKER_GID:-1000}
+    depends_on:
+      backend_init:
+        condition: service_completed_successfully
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=180"]
+
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-backend}
+      MYSQL_USER: ${DB_USERNAME:-backend}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  video-worker-api:
+    build:
+      context: ./services/video-worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      VIDEO_WORKER_REDIS_URL: ${VIDEO_WORKER_REDIS_URL:-redis://redis:6379/0}
+      VIDEO_WORKER_QUEUE_NAME: ${VIDEO_WORKER_QUEUE_NAME:-video-worker}
+      VIDEO_WORKER_STORAGE_PATH: ${VIDEO_WORKER_STORAGE_PATH:-/shared/video-worker}
+      VIDEO_WORKER_WHISPER_MODEL: ${VIDEO_WORKER_WHISPER_MODEL:-base}
+      VIDEO_WORKER_WHISPER_DEVICE: ${VIDEO_WORKER_WHISPER_DEVICE:-cpu}
+      VIDEO_WORKER_SUBTITLE_TEMPLATE: ${VIDEO_WORKER_SUBTITLE_TEMPLATE:-modern}
+      VIDEO_WORKER_TARGET_FPS: ${VIDEO_WORKER_TARGET_FPS:-30}
+      VIDEO_WORKER_ENABLE_LOUDNORM: ${VIDEO_WORKER_ENABLE_LOUDNORM:-false}
+      VIDEO_WORKER_LOG_LEVEL: ${VIDEO_WORKER_LOG_LEVEL:-INFO}
+      VIDEO_WORKER_API_KEY: ${VIDEO_WORKER_API_KEY:-}
+      VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST: ${VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST:-backend}
+    volumes:
+      - video_worker_shared:/shared
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  video-worker-worker:
+    build:
+      context: ./services/video-worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      VIDEO_WORKER_REDIS_URL: ${VIDEO_WORKER_REDIS_URL:-redis://redis:6379/0}
+      VIDEO_WORKER_QUEUE_NAME: ${VIDEO_WORKER_QUEUE_NAME:-video-worker}
+      VIDEO_WORKER_STORAGE_PATH: ${VIDEO_WORKER_STORAGE_PATH:-/shared/video-worker}
+      VIDEO_WORKER_WHISPER_MODEL: ${VIDEO_WORKER_WHISPER_MODEL:-base}
+      VIDEO_WORKER_WHISPER_DEVICE: ${VIDEO_WORKER_WHISPER_DEVICE:-cpu}
+      VIDEO_WORKER_SUBTITLE_TEMPLATE: ${VIDEO_WORKER_SUBTITLE_TEMPLATE:-modern}
+      VIDEO_WORKER_TARGET_FPS: ${VIDEO_WORKER_TARGET_FPS:-30}
+      VIDEO_WORKER_ENABLE_LOUDNORM: ${VIDEO_WORKER_ENABLE_LOUDNORM:-false}
+      VIDEO_WORKER_LOG_LEVEL: ${VIDEO_WORKER_LOG_LEVEL:-INFO}
+      VIDEO_WORKER_API_KEY: ${VIDEO_WORKER_API_KEY:-}
+      VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST: ${VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST:-backend}
+    volumes:
+      - video_worker_shared:/shared
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "video_worker.worker"]
+
+volumes:
+  db_data:
+  video_worker_shared:
+  caddy_data:
+  caddy_config:

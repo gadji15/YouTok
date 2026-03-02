@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+from video_worker.pipeline.subtitles import write_srt, write_srt_for_clip, write_stylized_ass_for_clip
+from video_worker.pipeline.types import TranscriptSegment
+
+
+def test_write_srt(tmp_path) -> None:
+    out = tmp_path / "subtitles.srt"
+    write_srt(
+        segments=[
+            TranscriptSegment(0.0, 1.23, "hello"),
+            TranscriptSegment(2.0, 3.5, "world"),
+        ],
+        output_path=out,
+    )
+
+    text = out.read_text(encoding="utf-8")
+    assert "00:00:00,000 --> 00:00:01,230" in text
+    assert "hello" in text
+
+
+def test_write_srt_for_clip_is_relative(tmp_path) -> None:
+    out = tmp_path / "clip.srt"
+    write_srt_for_clip(
+        clip_start_seconds=10.0,
+        clip_end_seconds=20.0,
+        segments=[
+            TranscriptSegment(9.0, 11.0, "before"),
+            TranscriptSegment(11.0, 12.0, "inside"),
+            TranscriptSegment(20.0, 22.0, "after"),
+        ],
+        output_path=out,
+    )
+
+    text = out.read_text(encoding="utf-8")
+    assert "00:00:00,000 --> 00:00:01,000" in text
+    assert "inside" in text
+    assert "after" not in text
+
+
+def test_write_ass_for_clip_is_relative(tmp_path) -> None:
+    out = tmp_path / "subtitles.ass"
+    write_stylized_ass_for_clip(
+        clip_start_seconds=10.0,
+        clip_end_seconds=20.0,
+        segments=[
+            TranscriptSegment(9.0, 11.0, "before"),
+            TranscriptSegment(11.0, 12.0, "inside"),
+            TranscriptSegment(20.0, 22.0, "after"),
+        ],
+        output_path=out,
+    )
+
+    text = out.read_text(encoding="utf-8")
+    assert "PlayResX" in text
+    # First included dialogue should start at 0 seconds relative.
+    assert "Dialogue: 0,0:00:00.00" in text
+    assert "inside" in text
+    assert "after" not in text
+
+
+def test_write_ass_karaoke_template(tmp_path) -> None:
+    out = tmp_path / "subtitles_k.ass"
+    write_stylized_ass_for_clip(
+        clip_start_seconds=0.0,
+        clip_end_seconds=2.0,
+        segments=[TranscriptSegment(0.0, 2.0, "hello world")],
+        output_path=out,
+        template="karaoke",
+    )
+
+    text = out.read_text(encoding="utf-8")
+    assert "\\k" in text
+    assert "hello" in text and "world" in text

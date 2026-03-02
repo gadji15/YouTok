@@ -1,0 +1,2 @@
+# Whisper / transcription (heavy)
+openai-whisper>=20231117
