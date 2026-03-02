@@ -16,6 +16,7 @@ import {
 } from "@/ui/primitives/Card";
 import { Progress } from "@/ui/primitives/Progress";
 import { Skeleton } from "@/ui/primitives/skeleton";
+import { CopyButton } from "@/ui/shell/CopyButton";
 import { PageHeader } from "@/ui/shell/PageHeader";
 
 export default async function ClipDetailsPage({
