@@ -45,7 +45,7 @@ Internal (requires header `X-Internal-Secret: <PUBLISH_INTERNAL_SECRET|INTERNAL_
 - `PUBLISH_ATTEMPTS` (default: `3`)
 - `PUBLISH_BACKOFF_SECONDS` (default: `30`)
 - `PUBLISH_CONCURRENCY` (default: `1`)
-- `PUBLISH_ARTIFACT_DIR` (default: `/app/storage/artifacts`)
+- `PUBLISH_ARTIFACT_DIR` (default: `/app/storage/artifacts` in Docker; otherwise `./storage/artifacts`)
 
 ## Storage
 
