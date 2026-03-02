@@ -8,17 +8,17 @@ is_production_env() {
 }
 
 if is_production_env; then
-  if [ -z "${INTERNAL_API_SECRET:-}" ] || [ "${INTERNAL_API_SECRET}" = "change-me" ]; then
+  if [ -z "${INTERNAL_API_SECRET:-}" ] || [[ "${INTERNAL_API_SECRET}" == change-me ]] || [[ "${INTERNAL_API_SECRET}" == please-change* ]]; then
     echo "[backend_init] ERROR: INTERNAL_API_SECRET must be set to a non-default value in production" >&2
     exit 1
   fi
 
-  if [ -z "${VIDEO_WORKER_CALLBACK_SECRET:-}" ] || [ "${VIDEO_WORKER_CALLBACK_SECRET}" = "change-me-too" ]; then
+  if [ -z "${VIDEO_WORKER_CALLBACK_SECRET:-}" ] || [[ "${VIDEO_WORKER_CALLBACK_SECRET}" == change-me-too ]] || [[ "${VIDEO_WORKER_CALLBACK_SECRET}" == please-change* ]]; then
     echo "[backend_init] ERROR: VIDEO_WORKER_CALLBACK_SECRET must be set to a non-default value in production" >&2
     exit 1
   fi
 
-  if [ -z "${ADMIN_PASSWORD:-}" ] || [ "${ADMIN_PASSWORD}" = "password" ]; then
+  if [ -z "${ADMIN_PASSWORD:-}" ] || [[ "${ADMIN_PASSWORD}" == password ]] || [[ "${ADMIN_PASSWORD}" == please-change* ]]; then
     echo "[backend_init] ERROR: ADMIN_PASSWORD must be changed from the default in production" >&2
     exit 1
   fi

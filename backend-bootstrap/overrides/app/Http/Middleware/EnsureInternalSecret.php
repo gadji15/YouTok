@@ -13,7 +13,7 @@ class EnsureInternalSecret
     {
         $expected = (string) config('admin.internal_api_secret', '');
 
-        if (app()->environment('production') && ($expected === '' || $expected === 'change-me')) {
+        if (app()->environment('production') && ($expected === '' || $expected === 'change-me' || str_starts_with($expected, 'please-change'))) {
             abort(500, 'INTERNAL_API_SECRET is not configured');
         }
 

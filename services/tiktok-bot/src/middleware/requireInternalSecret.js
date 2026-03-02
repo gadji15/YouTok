@@ -8,7 +8,7 @@ function requireInternalSecret(req, res, next) {
   const expected = getExpectedSecret();
   const isProduction = process.env.NODE_ENV === 'production';
 
-  if (!expected || (isProduction && expected === 'change-me')) {
+  if (!expected || (isProduction && (expected === 'change-me' || expected.startsWith('please-change')))) {
     return res.status(500).json({
       error: 'internal_secret_not_configured',
     });
