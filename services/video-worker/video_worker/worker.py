@@ -4,6 +4,7 @@ from rq import Connection, Worker
 
 from .config import get_settings
 from .logging import configure_logging, get_logger
+from .observability import configure_sentry
 from .redis_conn import get_redis
 
 
@@ -12,6 +13,9 @@ def main() -> None:
     configure_logging(settings.log_level)
 
     logger = get_logger(service="video-worker")
+
+    configure_sentry(dsn=settings.sentry_dsn, traces_sample_rate=settings.sentry_traces_sample_rate)
+
     logger.info("worker.start", queue=settings.queue_name)
 
     redis_conn = get_redis()

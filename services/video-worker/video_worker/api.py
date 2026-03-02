@@ -9,6 +9,7 @@ from .config import get_settings
 from .jobs import process_job
 from .logging import configure_logging, get_logger
 from .models import JobCreateRequest, JobCreateResponse
+from .observability import configure_metrics, configure_sentry
 from .redis_conn import get_redis
 from .rq_queue import get_queue
 
@@ -19,7 +20,12 @@ def create_app() -> FastAPI:
 
     logger = get_logger(service="video-worker-api")
 
+    configure_sentry(dsn=settings.sentry_dsn, traces_sample_rate=settings.sentry_traces_sample_rate)
+
     app = FastAPI(title="video-worker")
+
+    if settings.metrics_enabled:
+        configure_metrics(app=app)
 
     @app.get("/health")
     def health() -> dict:
@@ -38,8 +44,8 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=401, detail="unauthorized")
 
         if settings.callback_host_allowlist:
-            allowed = {h.strip() for h in settings.callback_host_allowlist.split(',') if h.strip()}
-            host = getattr(req.callback_url, 'host', None)
+            allowed = {h.strip() for h in settings.callback_host_allowlist.split(",") if h.strip()}
+            host = getattr(req.callback_url, "host", None)
             if not host or host not in allowed:
                 raise HTTPException(status_code=400, detail=f"callback_host_not_allowed: {host}")
 

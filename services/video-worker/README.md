@@ -7,6 +7,7 @@ Python service that accepts YouTube video processing jobs, runs a clip-generatio
 - FastAPI API server (`video_worker.api:app`)
   - `POST /jobs` enqueue a job into Redis via RQ
   - `GET /health` basic liveness + Redis ping
+  - `GET /metrics` Prometheus metrics (when `VIDEO_WORKER_METRICS_ENABLED=true`)
 - RQ worker process (`python -m video_worker.worker`)
   - executes the pipeline steps and posts results to the provided callback URL
 
@@ -35,6 +36,9 @@ Common:
 - `VIDEO_WORKER_TARGET_FPS` (default: `30`)
 - `VIDEO_WORKER_ENABLE_LOUDNORM` (default: `false`)
 - `VIDEO_WORKER_LOG_LEVEL` (default: `INFO`)
+- `VIDEO_WORKER_METRICS_ENABLED` (default: `true`)
+- `VIDEO_WORKER_SENTRY_DSN` (default: empty)
+- `VIDEO_WORKER_SENTRY_TRACES_SAMPLE_RATE` (default: `0.0`)
 - `VIDEO_WORKER_CALLBACK_MAX_RETRIES` (default: `3`)
 - `VIDEO_WORKER_CALLBACK_RETRY_BACKOFF_SECONDS` (default: `0.5`)
 - `VIDEO_WORKER_DOWNLOAD_MAX_RETRIES` (default: `2`)

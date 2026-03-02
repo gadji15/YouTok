@@ -239,6 +239,7 @@ def process_job(
             max_clips=effective_max_clips,
             audio_path=ctx.audio_path,
             video_path=ctx.source_video_path,
+            words=words,
             language=language,
         )
 

@@ -111,6 +111,11 @@ class Settings(BaseSettings):
     rq_job_timeout_seconds: int = Field(60 * 45, ge=60)
     rq_result_ttl_seconds: int = Field(60 * 60, ge=0)
 
+    # Observability
+    metrics_enabled: bool = Field(True, description="Expose Prometheus metrics at /metrics")
+    sentry_dsn: str = Field("", description="Sentry DSN (optional)")
+    sentry_traces_sample_rate: float = Field(0.0, ge=0.0, le=1.0)
+
     log_level: str = Field("INFO")
 
 
