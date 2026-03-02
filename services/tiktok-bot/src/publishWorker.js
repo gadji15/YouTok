@@ -16,7 +16,7 @@ function createPublishProcessor() {
   const logger = createLogger({ service: 'tiktok-bot.publish-worker' });
 
   const mode = (process.env.PUBLISH_MODE || 'stub').toLowerCase();
-  const artifactRoot = process.env.PUBLISH_ARTIFACT_DIR || '/app/storage/artifacts';
+  const artifactRoot = process.env.PUBLISH_ARTIFACT_DIR || path.join(process.cwd(), 'storage', 'artifacts');
 
   return async function processPublishJob(data, { jobId }) {
     const startedAt = Date.now();

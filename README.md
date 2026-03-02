@@ -21,6 +21,17 @@ make up
 
 Ouvrir: http://localhost:8080
 
+## Déploiement (prod, Docker + Caddy)
+
+Prérequis: un DNS qui pointe `${DOMAIN}` vers la machine.
+
+```bash
+cp .env.example .env
+# puis éditez .env (DOMAIN, ACME_EMAIL, APP_URL, secrets, mots de passe DB)
+
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
 Identifiants par défaut (voir `.env`):
 - email: `admin@example.com`
 - password: `password`
