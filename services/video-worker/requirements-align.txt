@@ -1,0 +1,3 @@
+# Forced alignment / word-level timestamps (optional but recommended)
+# WhisperX is heavy and pulls torch/torchaudio + alignment models.
+whisperx>=3.7.6,<4

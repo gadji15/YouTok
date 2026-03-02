@@ -49,7 +49,7 @@ python -m venv .venv
 # Light install (enough for unit tests + API scaffolding)
 pip install -r requirements.txt -r requirements-dev.txt
 
-# Full pipeline (includes Whisper; heavy)
+# Full pipeline (includes Whisper + WhisperX alignment; heavy)
 # pip install -r requirements-ml.txt
 
 # API
@@ -104,6 +104,10 @@ Payload shape:
   "error": null
 }
 ```
+
+Additional artifacts written to disk (not currently included in the callback payload):
+
+- `artifacts/words.json`: word-level timestamps `{word,start,end,confidence}` (WhisperX when available, otherwise heuristic fallback).
 
 ## Integration test plan (curl)
 

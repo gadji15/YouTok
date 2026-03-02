@@ -14,6 +14,11 @@ from .pipeline.download import download_youtube_video
 from .pipeline.segment import segment_candidates, write_clips_json
 from .pipeline.subtitles import write_srt
 from .pipeline.transcribe import transcribe_audio, write_transcript_json
+from .pipeline.word_alignment import (
+    align_words_with_whisperx,
+    approximate_words_from_segments,
+    write_words_json,
+)
 from .utils.errors import format_exception_short
 
 
@@ -188,6 +193,32 @@ def process_job(
         write_transcript_json(segments=segments, output_path=ctx.transcript_json_path)
         write_srt(segments=segments, output_path=ctx.subtitles_srt_path)
 
+        current_stage = "align"
+        current_progress = 60
+        _best_effort_progress_callback(
+            ctx=ctx,
+            stage=current_stage,
+            progress_percent=current_progress,
+            message="Aligning words (forced alignment)",
+            timeout_seconds=settings.callback_timeout_seconds,
+            max_retries=settings.callback_max_retries,
+            retry_backoff_seconds=settings.callback_retry_backoff_seconds,
+            logger=logger,
+        )
+
+        words = align_words_with_whisperx(
+            audio_path=ctx.audio_path,
+            segments=segments,
+            language=language,
+            logger=logger,
+            device=settings.whisper_device,
+        )
+        if words is None:
+            words = approximate_words_from_segments(segments=segments)
+            logger.info("align.fallback_approximate", word_count=len(words))
+
+        write_words_json(words=words, output_path=ctx.words_json_path)
+
         current_stage = "segment"
         current_progress = 70
         _best_effort_progress_callback(
@@ -233,6 +264,7 @@ def process_job(
             subtitle_template=effective_subtitle_template,
             target_fps=settings.target_fps,
             enable_loudnorm=settings.enable_loudnorm,
+            word_timings=words,
         )
 
         artifacts = JobArtifacts(

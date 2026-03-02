@@ -8,8 +8,9 @@ from ..utils.ffprobe import probe_video
 from ..utils.subprocess import run
 from .face_tracking import estimate_face_center_x
 from .saliency import estimate_motion_center_x
-from .subtitles import write_srt_for_clip, write_stylized_ass_for_clip
-from .types import ClipCandidate, TranscriptSegment
+from .subtitle_placement import choose_subtitle_placement
+from .subtitles import write_srt_for_clip, write_stylized_ass_for_clip, write_word_level_ass_for_clip
+from .types import ClipCandidate, TranscriptSegment, WordTiming
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -75,6 +76,7 @@ def render_clips(
     subtitle_template: str = "default",
     target_fps: int = 30,
     enable_loudnorm: bool = False,
+    word_timings: list[WordTiming] | None = None,
 ) -> list[dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -103,13 +105,33 @@ def render_clips(
         )
 
         if subtitles_enabled:
-            write_stylized_ass_for_clip(
+            placement = choose_subtitle_placement(
+                source_video=source_video,
                 clip_start_seconds=clip.start_seconds,
                 clip_end_seconds=clip.end_seconds,
-                segments=transcript_segments,
-                output_path=out_ass,
-                template=subtitle_template,
+                play_res_x=1080,
+                play_res_y=1920,
+                work_dir=clip_dir / "subtitle_placement",
+                logger=logger.bind(clip_id=clip.clip_id),
             )
+
+            if word_timings:
+                write_word_level_ass_for_clip(
+                    clip_start_seconds=clip.start_seconds,
+                    clip_end_seconds=clip.end_seconds,
+                    words=word_timings,
+                    output_path=out_ass,
+                    placement=(placement.alignment, placement.x, placement.y),
+                    template=subtitle_template,
+                )
+            else:
+                write_stylized_ass_for_clip(
+                    clip_start_seconds=clip.start_seconds,
+                    clip_end_seconds=clip.end_seconds,
+                    segments=transcript_segments,
+                    output_path=out_ass,
+                    template=subtitle_template,
+                )
 
         if out_video.exists() and out_video.stat().st_size > 0:
             rendered.append(
