@@ -88,8 +88,12 @@
     },
     "stages": {
       "download": "Téléchargement",
+      "extract_audio": "Extraction audio",
       "transcribe": "Transcription",
+      "align": "Alignement mots",
       "segment": "Segmentation",
+      "titles": "Titres",
+      "render_clips": "Rendu",
       "render": "Rendu",
       "done": "Terminé"
     },
@@ -264,6 +268,15 @@
       "created": "Créé",
       "duration": "Durée",
       "format": "Format"
+    },
+    "titles": {
+      "title": "Titres",
+      "subtitle": "Suggestions de titres viraux générées depuis la transcription.",
+      "suggested": "Titre suggéré",
+      "empty": "Aucune suggestion de titre pour le moment.",
+      "copy": "Copier",
+      "copied": "Copié",
+      "score": "Score : {value}%"
     },
     "actions": {
       "title": "Actions",

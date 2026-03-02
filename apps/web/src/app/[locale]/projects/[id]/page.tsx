@@ -21,7 +21,16 @@ import { PipelineProgress } from "@/ui/shell/PipelineProgress";
 
 type ProjectStatus = ApiProjectStatus;
 
-const stages = ["download", "transcribe", "segment", "render", "done"] as const;
+const stages = [
+  "download",
+  "extract_audio",
+  "transcribe",
+  "align",
+  "segment",
+  "titles",
+  "render_clips",
+  "done",
+] as const;
 const knownStages = new Set(stages);
 
 type Stage = (typeof stages)[number];

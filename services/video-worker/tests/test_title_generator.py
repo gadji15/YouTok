@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import structlog
+
 from video_worker.pipeline.title_generator import generate_title_candidates_for_clip
 from video_worker.pipeline.types import ClipCandidate, TranscriptSegment
 
@@ -23,7 +25,7 @@ def test_generate_title_candidates_heuristic_produces_top3_and_max_len() -> None
         segments=segs,
         language="en",
         provider="heuristic",
-        logger=__import__("structlog").get_logger(),
+        logger=structlog.get_logger(),
     )
 
     assert res.provider == "heuristic"
