@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 
 import '../globals.css';
-import { getMessages } from '../../i18n/getMessages';
+import { getMessages, setRequestLocale } from 'next-intl/server';
+
 import { IntlProvider } from '../../i18n/IntlProvider';
 import { isLocale, type AppLocale } from '../../i18n/locales';
 import { AppShell } from '@/ui/shell/AppShell';
@@ -31,7 +32,8 @@ export default async function RootLayout({
   const { locale: rawLocale } = await params;
   const locale: AppLocale = isLocale(rawLocale) ? rawLocale : 'fr';
 
-  const messages = getMessages(locale);
+  setRequestLocale(locale);
+  const messages = await getMessages();
 
   return (
     <html lang={locale} className={sans.variable} suppressHydrationWarning>

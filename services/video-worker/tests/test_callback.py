@@ -39,6 +39,8 @@ def test_post_callback_sends_header_and_json(monkeypatch) -> None:
     assert seen["json"]["stage"] == "download"
     assert seen["json"]["progress_percent"] == 10
     assert seen["json"]["message"] == "Downloading"
+    assert "artifacts" not in seen["json"]
+    assert "error" not in seen["json"]
     assert seen["timeout"] == 12.5
 
 
