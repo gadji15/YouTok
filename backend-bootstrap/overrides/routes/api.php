@@ -14,6 +14,7 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 Route::middleware('internal.secret')->get('/projects', [ProjectController::class, 'index']);
 Route::middleware('internal.secret')->post('/projects', [ProjectController::class, 'store']);
 Route::middleware('internal.secret')->get('/projects/{project}', [ProjectController::class, 'show']);
+Route::middleware('internal.secret')->delete('/projects/{project}', [ProjectController::class, 'destroy']);
 
 Route::middleware('internal.secret')->get('/projects/{project}/artifacts/transcript', [\App\Http\Controllers\Api\ProjectAssetController::class, 'transcriptJson']);
 Route::middleware('internal.secret')->get('/projects/{project}/artifacts/subtitles', [\App\Http\Controllers\Api\ProjectAssetController::class, 'subtitlesSrt']);

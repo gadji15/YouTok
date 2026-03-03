@@ -130,6 +130,10 @@ upsert_env_kv() {
 {
   echo "[backend_init] syncing runtime env to .env" >&2
 
+  APP_ENV_EFFECTIVE="${APP_ENV:-local}"
+  APP_DEBUG_EFFECTIVE="${APP_DEBUG:-true}"
+  APP_URL_EFFECTIVE="${APP_URL:-http://localhost}"
+
   DB_CONNECTION_EFFECTIVE="${DB_CONNECTION:-mysql}"
   DB_HOST_EFFECTIVE="${DB_HOST:-db}"
   DB_PORT_EFFECTIVE="${DB_PORT:-3306}"
@@ -140,6 +144,10 @@ upsert_env_kv() {
   QUEUE_CONNECTION_EFFECTIVE="${QUEUE_CONNECTION:-database}"
   SESSION_DRIVER_EFFECTIVE="${SESSION_DRIVER:-file}"
   CACHE_STORE_EFFECTIVE="${CACHE_STORE:-file}"
+
+  upsert_env_kv APP_ENV "$APP_ENV_EFFECTIVE"
+  upsert_env_kv APP_DEBUG "$APP_DEBUG_EFFECTIVE"
+  upsert_env_kv APP_URL "$APP_URL_EFFECTIVE"
 
   upsert_env_kv DB_CONNECTION "$DB_CONNECTION_EFFECTIVE"
   upsert_env_kv DB_HOST "$DB_HOST_EFFECTIVE"
