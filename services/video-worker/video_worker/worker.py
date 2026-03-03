@@ -19,7 +19,10 @@ def main() -> None:
 
     logger = get_logger(service="video-worker")
 
-    configure_sentry(dsn=settings.sentry_dsn, traces_sample_rate=settings.sentry_traces_sample_rate)
+    configure_sentry(
+        dsn=getattr(settings, "sentry_dsn", ""),
+        traces_sample_rate=getattr(settings, "sentry_traces_sample_rate", 0.0),
+    )
 
     logger.info("worker.start", queue=settings.queue_name)
 

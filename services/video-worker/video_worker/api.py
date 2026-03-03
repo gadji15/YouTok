@@ -28,11 +28,14 @@ def create_app() -> FastAPI:
 
     logger = get_logger(service="video-worker-api")
 
-    configure_sentry(dsn=settings.sentry_dsn, traces_sample_rate=settings.sentry_traces_sample_rate)
+    configure_sentry(
+        dsn=getattr(settings, "sentry_dsn", ""),
+        traces_sample_rate=getattr(settings, "sentry_traces_sample_rate", 0.0),
+    )
 
     app = FastAPI(title="video-worker")
 
-    if settings.metrics_enabled:
+    if getattr(settings, "metrics_enabled", False):
         configure_metrics(app=app)
 
     @app.get("/health")
