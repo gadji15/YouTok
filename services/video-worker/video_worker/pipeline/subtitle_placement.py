@@ -82,15 +82,22 @@ def _detect_faces_and_mouth_ymin_rel(frame_paths: list[Path]) -> tuple[list[tupl
     except Exception:
         return [], None
 
+    # MediaPipe is an optional dependency and can be missing/partially installed on some platforms.
+    if not getattr(mp, "solutions", None) or not getattr(mp.solutions, "face_mesh", None):
+        return [], None
+
     face_bboxes: list[tuple[float, float, float, float]] = []
     mouth_ymins: list[float] = []
 
-    mesh = mp.solutions.face_mesh.FaceMesh(
-        static_image_mode=True,
-        refine_landmarks=True,
-        max_num_faces=1,
-        min_detection_confidence=0.5,
-    )
+    try:
+        mesh = mp.solutions.face_mesh.FaceMesh(
+            static_image_mode=True,
+            refine_landmarks=True,
+            max_num_faces=1,
+            min_detection_confidence=0.5,
+        )
+    except Exception:
+        return [], None
 
     # Approx mouth landmarks: inner+outer lips.
     mouth_idxs = {

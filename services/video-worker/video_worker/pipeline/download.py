@@ -55,7 +55,8 @@ def download_youtube_video(
                 "--fragment-retries",
                 "3",
                 "-f",
-                "bestvideo+bestaudio/best",
+                # Prefer H.264/AVC (avc1) to avoid AV1 decode issues in some environments.
+                "bestvideo[vcodec^=avc1]+bestaudio/bestvideo+bestaudio/best",
                 "--merge-output-format",
                 "mp4",
                 "--force-overwrites",
