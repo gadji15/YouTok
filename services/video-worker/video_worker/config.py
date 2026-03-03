@@ -28,6 +28,15 @@ class Settings(BaseSettings):
         description="Shared storage path for downloaded sources and generated clips",
     )
 
+    # Optional S3-compatible storage (V2 prep). When configured, artifacts can be uploaded
+    # to object storage in addition to local /shared paths.
+    s3_bucket: str = Field("", description="S3 bucket name for artifact uploads (optional)")
+    s3_prefix: str = Field("hikma", description="Key prefix inside the bucket")
+    s3_region: str = Field("", description="AWS region (optional depending on provider)")
+    s3_endpoint_url: str = Field("", description="Custom S3 endpoint URL (MinIO/Wasabi/etc)")
+    s3_access_key_id: str = Field("", description="S3 access key id")
+    s3_secret_access_key: str = Field("", description="S3 secret access key")
+
     whisper_model: str = Field(
         "base",
         description="Whisper model name (e.g. tiny, base, small, medium)",

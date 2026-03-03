@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import json
 import structlog
 
 from ..utils.ffprobe import probe_video
@@ -250,6 +251,29 @@ def render_clips(
 
             stats = _best_effort_log_ass_stats(ass_path=out_ass, clip_id=clip.clip_id, source=used_source)
 
+            # Persist placement diagnostics for later QA / scoring.
+            try:
+                metrics_path = clip_dir / "metrics.json"
+                payload = {
+                    "clip_id": clip.clip_id,
+                    "subtitles": {
+                        "enabled": True,
+                        "template": subtitle_template,
+                        "placement": {
+                            "alignment": placement.alignment,
+                            "x": placement.x,
+                            "y": placement.y,
+                            "face_overlap_ratio": getattr(placement, "face_overlap_ratio", 0.0),
+                            "ui_score": getattr(placement, "ui_score", 0.0),
+                        },
+                        "ass_stats": stats,
+                    },
+                }
+                metrics_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            except Exception:
+                logger.exception("clip.metrics_write_failed", clip_id=clip.clip_id)
+
+            # Persist placement diagnostics for later QA / scoring
             # Safety net: if we ended up with a tiny number of very long Dialogue events,
             # regenerate using approximate timings (prevents "frozen" subtitles even if
             # upstream word timings are sparse/broken).
@@ -329,6 +353,14 @@ def render_clips(
         crop_x0 = _compute_crop_x_pixels(source_video=source_video, center_x_rel=float(start_center))
         crop_x1 = _compute_crop_x_pixels(source_video=source_video, center_x_rel=float(end_center))
 
+        # Smoothing: cap pan speed to avoid aggressive reframing when detections are noisy.
+        # This keeps the crop stable (better for retention).
+        max_pan_px_per_sec = 220.0
+        max_delta = int(round(max_pan_px_per_sec * float(duration)))
+        delta = crop_x1 - crop_x0
+        if abs(delta) > max_delta:
+            crop_x1 = crop_x0 + (max_delta if delta > 0 else -max_delta)
+
         if abs(crop_x1 - crop_x0) < 24:
             crop_filter = f"crop=1080:1920:x={crop_x0}:y=(ih-1920)/2"
         else:
@@ -372,16 +404,23 @@ def render_clips(
         ffmpeg_args += [
             "-c:v",
             "libx264",
+            "-profile:v",
+            "high",
             "-pix_fmt",
             "yuv420p",
             "-preset",
             "veryfast",
-            "-crf",
-            "18",
+            # Target bitrate-based encode for more predictable TikTok packaging.
+            "-b:v",
+            "10M",
+            "-maxrate",
+            "12M",
+            "-bufsize",
+            "20M",
             "-c:a",
             "aac",
             "-b:a",
-            "128k",
+            "192k",
             "-movflags",
             "+faststart",
             str(out_video),

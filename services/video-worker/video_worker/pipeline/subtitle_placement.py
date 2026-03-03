@@ -12,6 +12,10 @@ class SubtitlePlacement:
     x: int
     y: int
 
+    # Diagnostics / metrics (best-effort)
+    face_overlap_ratio: float = 0.0
+    ui_score: float = 0.0
+
 
 def _edge_density(gray, *, x0: int, y0: int, x1: int, y1: int) -> float:
     import cv2
@@ -230,8 +234,21 @@ def choose_subtitle_placement(
         # No faces: use bottom-center but if UI score suggests lower-third graphics, push up a bit.
         if ui_score > 0.12:
             shift = int(max(play_res_y * 0.05, 70))
-            return SubtitlePlacement(alignment=2, x=play_res_x // 2, y=play_res_y - bottom_margin - shift)
-        return candidates[0]
+            return SubtitlePlacement(
+                alignment=2,
+                x=play_res_x // 2,
+                y=play_res_y - bottom_margin - shift,
+                face_overlap_ratio=0.0,
+                ui_score=ui_score,
+            )
+        c = candidates[0]
+        return SubtitlePlacement(
+            alignment=c.alignment,
+            x=c.x,
+            y=c.y,
+            face_overlap_ratio=0.0,
+            ui_score=ui_score,
+        )
 
     def overlap_ratio(placement: SubtitlePlacement) -> float:
         # Convert subtitle box to relative bbox.
@@ -273,7 +290,23 @@ def choose_subtitle_placement(
             best = c
 
     if best is None:
-        return candidates[0]
+        c = candidates[0]
+        return SubtitlePlacement(
+            alignment=c.alignment,
+            x=c.x,
+            y=c.y,
+            face_overlap_ratio=0.0,
+            ui_score=ui_score,
+        )
+
+    # If we chose bottom but UI heuristics are strong, shift up until we clear the zone.
+    if best.alignment == 2 and ui_score > 0.12:
+        shift_step = int(max(play_res_y * 0.05, 70))
+        best = SubtitlePlacement(
+            alignment=2,
+            x=best.x,
+            y=max(top_margin + box_h, best.y - shift_step),
+        )
 
     # If we still chose bottom but overlap is a bit high, shift up.
     if best.alignment == 2:
@@ -282,12 +315,23 @@ def choose_subtitle_placement(
             shift = int(max(play_res_y * 0.05, 70))
             best = SubtitlePlacement(alignment=2, x=best.x, y=max(top_margin + box_h, best.y - shift))
 
+    o_final = overlap_ratio(best)
+
+    best = SubtitlePlacement(
+        alignment=best.alignment,
+        x=best.x,
+        y=best.y,
+        face_overlap_ratio=o_final,
+        ui_score=ui_score,
+    )
+
     logger.info(
         "subtitles.placement",
         alignment=best.alignment,
         x=best.x,
         y=best.y,
         ui_score=ui_score,
+        face_overlap_ratio=o_final,
         face_detected=True,
     )
 
