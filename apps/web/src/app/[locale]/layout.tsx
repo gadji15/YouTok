@@ -40,7 +40,17 @@ export default async function RootLayout({
       </head>
       <body>
         <ThemeProvider>
-          <NextIntlClientProvider locale={locale} messages={messages}>
+          <NextIntlClientProvider
+            locale={locale}
+            messages={messages}
+            getMessageFallback={({ namespace, key }) =>
+              namespace ? `${namespace}.${key}` : key
+            }
+            onError={(error) => {
+              if (error.message.includes('MISSING_MESSAGE')) return;
+              console.error(error);
+            }}
+          >
             <AppShell>
               <PageTransition>{children}</PageTransition>
             </AppShell>
