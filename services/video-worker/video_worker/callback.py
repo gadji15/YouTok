@@ -91,7 +91,7 @@ def post_callback(
     def _do_post() -> None:
         response = httpx.post(
             callback_url,
-            json=payload.model_dump(mode="json"),
+            json=payload.model_dump(mode="json", exclude_none=True),
             headers={
                 "X-Callback-Secret": callback_secret,
                 "Accept": "application/json",
