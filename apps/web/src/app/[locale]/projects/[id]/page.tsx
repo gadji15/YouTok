@@ -19,6 +19,8 @@ import { CopyButton } from "@/ui/shell/CopyButton";
 import { PageHeader } from "@/ui/shell/PageHeader";
 import { PipelineProgress } from "@/ui/shell/PipelineProgress";
 
+import { DeleteProjectButton } from "./ui/DeleteProjectButton";
+
 type ProjectStatus = ApiProjectStatus;
 
 const stages = [
@@ -123,9 +125,10 @@ export default async function ProjectDetailsPage({
               }}
             />
             <Button disabled>{t("actions.retry")}</Button>
-            <Button variant="danger" disabled>
-              {t("actions.delete")}
-            </Button>
+            <DeleteProjectButton
+              projectId={project.id}
+              redirectHref={`/${locale}/projects`}
+            />
           </>
         }
       />

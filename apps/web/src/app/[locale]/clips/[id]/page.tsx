@@ -19,6 +19,8 @@ import { Skeleton } from "@/ui/primitives/skeleton";
 import { CopyButton } from "@/ui/shell/CopyButton";
 import { PageHeader } from "@/ui/shell/PageHeader";
 
+import { DeleteClipButton } from "./ui/DeleteClipButton";
+
 export default async function ClipDetailsPage({
   params,
 }: {
@@ -67,6 +69,12 @@ export default async function ClipDetailsPage({
             <Button variant="primary" disabled={!clip.video_path}>
               {t("actions.download")}
             </Button>
+            <DeleteClipButton
+              clipId={id}
+              redirectHref={
+                clip.project ? `/${locale}/projects/${clip.project.id}` : `/${locale}/clips`
+              }
+            />
           </>
         }
       />

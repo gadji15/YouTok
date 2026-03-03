@@ -78,7 +78,9 @@
     },
     "actions": {
       "retry": "Relancer",
-      "delete": "Supprimer"
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer ce projet et tous ses clips ? Cette action est irréversible.",
+      "deleting": "Suppression…"
     },
     "overview": {
       "title": "Aperçu",
@@ -282,6 +284,9 @@
       "title": "Actions",
       "subtitle": "Téléchargements et liens.",
       "download": "Télécharger",
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer ce clip ? Cette action est irréversible.",
+      "deleting": "Suppression…",
       "copyLink": "Copier le lien",
       "openInNewTab": "Ouvrir dans un nouvel onglet"
     }

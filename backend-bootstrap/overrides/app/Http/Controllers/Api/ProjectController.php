@@ -8,9 +8,11 @@ use App\Enums\ProjectStatus;
 use App\Jobs\SubmitVideoWorkerJob;
 use App\Models\PipelineEvent;
 use App\Models\Project;
+use App\Support\SharedStorage;
 use App\Support\Youtube;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class ProjectController
 {
@@ -157,5 +159,26 @@ class ProjectController
             'created_at' => $project->created_at?->toISOString(),
             'updated_at' => $project->updated_at?->toISOString(),
         ]);
+    }
+
+    public function destroy(Request $request, Project $project): Response
+    {
+        $project->load(['clips']);
+
+        SharedStorage::deleteFile($project->source_video_path);
+        SharedStorage::deleteFile($project->audio_path);
+        SharedStorage::deleteFile($project->transcript_json_path);
+        SharedStorage::deleteFile($project->subtitles_srt_path);
+        SharedStorage::deleteFile($project->clips_json_path);
+
+        foreach ($project->clips as $clip) {
+            SharedStorage::deleteFile($clip->video_path);
+            SharedStorage::deleteFile($clip->subtitles_ass_path);
+            SharedStorage::deleteFile($clip->subtitles_srt_path);
+        }
+
+        $project->delete();
+
+        return response()->noContent();
     }
 }

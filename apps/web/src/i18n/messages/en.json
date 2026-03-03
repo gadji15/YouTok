@@ -78,7 +78,9 @@
     },
     "actions": {
       "retry": "Retry",
-      "delete": "Delete"
+      "delete": "Delete",
+      "deleteConfirm": "Delete this project and all its clips? This cannot be undone.",
+      "deleting": "Deleting…"
     },
     "overview": {
       "title": "Overview",
@@ -282,6 +284,9 @@
       "title": "Actions",
       "subtitle": "Downloads and links.",
       "download": "Download",
+      "delete": "Delete",
+      "deleteConfirm": "Delete this clip? This cannot be undone.",
+      "deleting": "Deleting…",
       "copyLink": "Copy link",
       "openInNewTab": "Open in new tab"
     }

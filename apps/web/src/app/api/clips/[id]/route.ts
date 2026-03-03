@@ -11,3 +11,21 @@ export async function GET(
   const json = await res.json();
   return NextResponse.json(json, { status: res.status });
 }
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const res = await laravelInternalFetch(`/api/clips/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+
+  if (res.status === 204) {
+    return new NextResponse(null, { status: 204 });
+  }
+
+  const contentType = res.headers.get('content-type') ?? 'application/json';
+  const body = await res.text();
+  return new NextResponse(body, { status: res.status, headers: { 'Content-Type': contentType } });
+}

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Models\Clip;
+use App\Support\SharedStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class ClipController
 {
@@ -92,5 +94,16 @@ class ClipController
             'created_at' => $clip->created_at?->toISOString(),
             'updated_at' => $clip->updated_at?->toISOString(),
         ]);
+    }
+
+    public function destroy(Request $request, Clip $clip): Response
+    {
+        SharedStorage::deleteFile($clip->video_path);
+        SharedStorage::deleteFile($clip->subtitles_ass_path);
+        SharedStorage::deleteFile($clip->subtitles_srt_path);
+
+        $clip->delete();
+
+        return response()->noContent();
     }
 }
