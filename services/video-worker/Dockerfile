@@ -8,6 +8,9 @@ RUN apt-get update \
         gcc g++ \
         libglib2.0-0 \
         libgl1 \
+        fontconfig \
+        fonts-noto-core \
+        fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
 
 ARG PYTORCH_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu

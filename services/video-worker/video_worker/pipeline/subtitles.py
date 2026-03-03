@@ -116,10 +116,10 @@ def write_stylized_ass_for_clip(
 
     template = (template or "default").lower().strip()
 
-    style_line = "Style: Default,Arial,58,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,80,80,120,1"
+    style_line = "Style: Default,Noto Sans,58,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,80,80,220,1"
     if template in {"modern", "modern_karaoke"}:
         # A cleaner, more modern look: slightly larger, stronger outline, and a safer bottom margin.
-        style_line = "Style: Default,Arial,62,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,80,80,160,1"
+        style_line = "Style: Default,Noto Sans,62,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,80,80,260,1"
 
     header = "\n".join(
         [
@@ -209,13 +209,21 @@ def write_word_level_ass_for_clip(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     template = (template or "modern_karaoke").lower().strip()
+    karaoke_mode = template in {"karaoke", "modern_karaoke"}
 
-    # Primary/Secondary are used by libass karaoke:
-    # - SecondaryColour: base text
-    # - PrimaryColour: highlighted portion
-    style_line = "Style: Default,Arial,62,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,80,80,160,1"
-    if template in {"default", "karaoke"}:
-        style_line = "Style: Default,Arial,58,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,80,80,120,1"
+    if karaoke_mode:
+        # Primary/Secondary are used by libass karaoke:
+        # - SecondaryColour: base text
+        # - PrimaryColour: highlighted portion
+        style_line = "Style: Default,Noto Sans,62,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,80,80,260,1"
+        if template == "karaoke":
+            style_line = "Style: Default,Noto Sans,58,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,80,80,220,1"
+    else:
+        # Non-karaoke mode is more robust for mixed scripts (FR/EN/AR) and avoids
+        # libass karaoke edge-cases.
+        style_line = "Style: Default,Noto Sans,62,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,80,80,260,1"
+        if template == "default":
+            style_line = "Style: Default,Noto Sans,58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,80,80,220,1"
 
     header = "\n".join(
         [
@@ -237,10 +245,31 @@ def write_word_level_ass_for_clip(
 
     # placement = (alignment, x, y)
     if placement is None:
-        placement = (2, play_res_x // 2, play_res_y - int(max(play_res_y * 0.08, 120)))
+        placement = (2, play_res_x // 2, play_res_y - int(max(play_res_y * 0.13, 220)))
 
     an, px, py = placement
     pos_tag = f"{{\\an{an}\\pos({px},{py})\\blur2}}"
+
+    bidi_marks = {
+        "\u200e",
+        "\u200f",
+        "\u202a",
+        "\u202b",
+        "\u202c",
+        "\u202d",
+        "\u202e",
+        "\u2066",
+        "\u2067",
+        "\u2068",
+        "\u2069",
+    }
+
+    def _clean_text(t: str) -> str:
+        t = t.replace("{", "(").replace("}", ")")
+        t = t.replace("\n", " ").replace("\r", " ")
+        t = t.replace("\\", "/")
+        t = "".join(ch for ch in t if ch not in bidi_marks)
+        return t.strip()
 
     # Select words for the clip and shift times to clip-relative.
     clip_words: list[WordTiming] = []
@@ -253,76 +282,106 @@ def write_word_level_ass_for_clip(
         end = min(w.end_seconds, clip_end_seconds) - clip_start_seconds
         if end <= start:
             continue
+
+        cleaned = _clean_text(w.word)
+        if not cleaned:
+            continue
+
         clip_words.append(
             WordTiming(
-                word=w.word,
+                word=cleaned,
                 start_seconds=float(start),
                 end_seconds=float(end),
                 confidence=w.confidence,
             )
         )
 
-    def _clean_text(t: str) -> str:
-        return t.replace("{", "(").replace("}", ")").strip()
+    def _emit_event(page_lines: list[list[WordTiming]]) -> tuple[float, float, str] | None:
+        event_words = [w for line in page_lines for w in line]
+        if not event_words:
+            return None
 
-    def _emit_line(line_words: list[WordTiming]) -> tuple[float, float, str]:
-        start = line_words[0].start_seconds
-        end = line_words[-1].end_seconds
-        dur_cs_total = max(1, int(round((end - start) * 100)))
+        start = event_words[0].start_seconds
+        end = event_words[-1].end_seconds
 
-        # Distribute centiseconds per word according to true durations.
-        raw = [max(1, int(round((w.end_seconds - w.start_seconds) * 100))) for w in line_words]
-        s = sum(raw)
-        if s <= 0:
-            raw = [1 for _ in raw]
-            s = len(raw)
+        if karaoke_mode:
+            dur_cs_total = max(1, int(round((end - start) * 100)))
+            raw = [max(1, int(round((w.end_seconds - w.start_seconds) * 100))) for w in event_words]
+            s = sum(raw)
+            if s <= 0:
+                raw = [1 for _ in raw]
+                s = len(raw)
 
-        scaled = [max(1, int(round(d * dur_cs_total / s))) for d in raw]
-        # Fix rounding drift.
-        drift = dur_cs_total - sum(scaled)
-        if drift != 0:
-            scaled[-1] = max(1, scaled[-1] + drift)
+            scaled = [max(1, int(round(d * dur_cs_total / s))) for d in raw]
+            drift = dur_cs_total - sum(scaled)
+            if drift != 0:
+                scaled[-1] = max(1, scaled[-1] + drift)
 
-        parts = [f"{{\\k{scaled[i]}}}{_clean_text(w.word)}" for i, w in enumerate(line_words)]
-        text = " ".join(parts)
+            idx = 0
+            line_texts: list[str] = []
+            for line in page_lines:
+                parts: list[str] = []
+                for w in line:
+                    parts.append(f"{{\\k{scaled[idx]}}}{w.word}")
+                    idx += 1
+                line_texts.append(" ".join(parts))
+            text = "\\N".join(line_texts)
+        else:
+            text = "\\N".join(" ".join(w.word for w in line) for line in page_lines)
+
         return start, end, text
 
-    # Group into subtitle lines.
-    lines: list[list[WordTiming]] = []
+    if not clip_words:
+        atomic_write_text(output_path, header + "\n")
+        return
+
+    pages: list[list[list[WordTiming]]] = []
+    page_lines: list[list[WordTiming]] = []
     cur: list[WordTiming] = []
     cur_chars = 0
+    prev_end: float | None = None
 
     for w in clip_words:
-        wtxt = _clean_text(w.word)
-        add = len(wtxt) + (1 if cur else 0)
+        gap = (w.start_seconds - prev_end) if prev_end is not None else 0.0
+        if (page_lines or cur) and gap > 0.80:
+            if cur:
+                page_lines.append(cur)
+                cur = []
+                cur_chars = 0
+            if page_lines:
+                pages.append(page_lines)
+            page_lines = []
 
-        gap = (w.start_seconds - cur[-1].end_seconds) if cur else 0.0
+        add = len(w.word) + (1 if cur else 0)
         too_long = (len(cur) >= max_words_per_line) or (cur_chars + add > max_chars_per_line)
-        if cur and (gap > 0.60 or too_long):
-            lines.append(cur)
-            cur = []
-            cur_chars = 0
+
+        if cur and too_long:
+            if len(page_lines) == 0:
+                page_lines.append(cur)
+                cur = []
+                cur_chars = 0
+            else:
+                page_lines.append(cur)
+                pages.append(page_lines)
+                page_lines = []
+                cur = []
+                cur_chars = 0
 
         cur.append(w)
         cur_chars += add
+        prev_end = w.end_seconds
 
     if cur:
-        lines.append(cur)
-
-    # Enforce 2-line max by merging extras.
-    if len(lines) > 2:
-        merged = lines[:1]
-        rest = [w for l in lines[1:] for w in l]
-        merged.append(rest)
-        lines = merged
+        page_lines.append(cur)
+    if page_lines:
+        pages.append(page_lines)
 
     events: list[str] = []
-    for line_words in lines:
-        if not line_words:
+    for page in pages:
+        emitted = _emit_event(page)
+        if emitted is None:
             continue
-
-        start, end, text = _emit_line(line_words)
-
+        start, end, text = emitted
         events.append(
             "Dialogue: 0,{},{},Default,,0,0,0,,{}{}".format(
                 _ass_ts(start),
