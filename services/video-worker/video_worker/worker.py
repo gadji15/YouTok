@@ -4,8 +4,13 @@ from rq import Connection, Worker
 
 from .config import get_settings
 from .logging import configure_logging, get_logger
-from .observability import configure_sentry
 from .redis_conn import get_redis
+
+try:
+    from .observability import configure_sentry
+except ModuleNotFoundError:
+    def configure_sentry(*, dsn: str, traces_sample_rate: float = 0.0) -> None:
+        return
 
 
 def main() -> None:

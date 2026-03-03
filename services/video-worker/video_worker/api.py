@@ -9,9 +9,17 @@ from .config import get_settings
 from .jobs import process_job
 from .logging import configure_logging, get_logger
 from .models import JobCreateRequest, JobCreateResponse
-from .observability import configure_metrics, configure_sentry
 from .redis_conn import get_redis
 from .rq_queue import get_queue
+
+try:
+    from .observability import configure_metrics, configure_sentry
+except ModuleNotFoundError:
+    def configure_sentry(*, dsn: str, traces_sample_rate: float = 0.0) -> None:
+        return
+
+    def configure_metrics(*, app: FastAPI) -> None:
+        return
 
 
 def create_app() -> FastAPI:
