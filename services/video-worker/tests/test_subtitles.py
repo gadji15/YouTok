@@ -122,3 +122,25 @@ def test_write_word_level_ass_karaoke_contains_k_tags(tmp_path) -> None:
 
     text = out.read_text(encoding="utf-8")
     assert "\\k" in text
+
+
+def test_write_word_level_ass_splits_long_window_into_multiple_events(tmp_path) -> None:
+    out = tmp_path / "subtitles_word_long.ass"
+
+    # 30 words over 15 seconds.
+    words = [
+        WordTiming(word=f"w{i}", start_seconds=i * 0.5, end_seconds=(i + 1) * 0.5, confidence=1.0)
+        for i in range(30)
+    ]
+
+    write_word_level_ass_for_clip(
+        clip_start_seconds=0.0,
+        clip_end_seconds=20.0,
+        words=words,
+        output_path=out,
+        template="modern",
+        placement=(2, 540, 1600),
+    )
+
+    text = out.read_text(encoding="utf-8")
+    assert text.count("Dialogue:") >= 3

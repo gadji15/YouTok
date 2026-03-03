@@ -372,15 +372,27 @@ def write_word_level_ass_for_clip(
         gap = (w.start_seconds - cur[-1].end_seconds) if cur else 0.0
 
         add = len(w.word) + (1 if cur else 0)
-        would_exceed = (len(cur) >= max_words_per_event) or (cur_chars + add > max_chars_per_event)
 
-        cur_duration = (w.end_seconds - cur[0].start_seconds) if cur else 0.0
-        too_long = cur and (cur_duration > max_event_seconds)
-
-        if cur and (gap > 0.85 or would_exceed or (too_long and gap > 0.10)):
+        # Flush current chunk on obvious breaks.
+        if cur and gap > 0.85:
             chunks.append(cur)
             cur = []
             cur_chars = 0
+
+        # Enforce max chunk duration even when speech is continuous (small gaps).
+        if cur:
+            next_duration = w.end_seconds - cur[0].start_seconds
+            if next_duration > max_event_seconds:
+                chunks.append(cur)
+                cur = []
+                cur_chars = 0
+
+        would_exceed = (len(cur) >= max_words_per_event) or (cur_chars + add > max_chars_per_event)
+        if cur and would_exceed:
+            chunks.append(cur)
+            cur = []
+            cur_chars = 0
+            add = len(w.word)
 
         cur.append(w)
         cur_chars += add
