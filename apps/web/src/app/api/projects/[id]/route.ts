@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
 import { laravelInternalFetch } from '@/lib/server/laravel';
 
 export async function GET(
-  _req: Request,
+  _req: NextRequest,
   { params }: { params: Promise<{ id?: string }> }
 ) {
   const { id } = await params;
@@ -17,7 +17,7 @@ export async function GET(
 }
 
 export async function DELETE(
-  _req: Request,
+  _req: NextRequest,
   { params }: { params: Promise<{ id?: string }> }
 ) {
   const { id } = await params;
