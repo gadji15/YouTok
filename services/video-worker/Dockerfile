@@ -35,6 +35,10 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 COPY video_worker ./video_worker
+# Some environments have shown odd build cache behavior where newly-added
+# modules under video_worker/ are not reflected in the runtime image.
+# This explicit copy ensures observability stays in sync.
+COPY video_worker/observability.py ./video_worker/observability.py
 
 ENV PYTHONUNBUFFERED=1
 
