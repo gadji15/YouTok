@@ -4,9 +4,13 @@ import { laravelInternalFetch } from '@/lib/server/laravel';
 
 export async function GET(
   _req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id?: string }> }
 ) {
   const { id } = await params;
+  if (!id) {
+    return NextResponse.json({ error: 'Missing project id.' }, { status: 400 });
+  }
+
   const res = await laravelInternalFetch(`/api/projects/${encodeURIComponent(id)}`);
   const json = await res.json();
   return NextResponse.json(json, { status: res.status });
@@ -14,9 +18,13 @@ export async function GET(
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id?: string }> }
 ) {
   const { id } = await params;
+  if (!id) {
+    return NextResponse.json({ error: 'Missing project id.' }, { status: 400 });
+  }
+
   const res = await laravelInternalFetch(`/api/projects/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   });

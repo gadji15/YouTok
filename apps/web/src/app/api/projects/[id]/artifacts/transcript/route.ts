@@ -2,9 +2,12 @@ import { laravelInternalFetch } from '@/lib/server/laravel';
 
 export async function GET(
   _req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id?: string }> }
 ) {
   const { id } = await params;
+  if (!id) {
+    return new Response('Missing project id.', { status: 400 });
+  }
 
   const res = await laravelInternalFetch(
     `/api/projects/${encodeURIComponent(id)}/artifacts/transcript`
