@@ -37,6 +37,8 @@ def approximate_words_from_segments(*, segments: list[TranscriptSegment]) -> lis
 
         tokens = [m.group(0) for m in _WORD_RE.finditer(text)]
         if not tokens:
+            tokens = [w for w in text.split() if w]
+        if not tokens:
             continue
 
         start = float(seg.start_seconds)

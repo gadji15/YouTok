@@ -179,7 +179,8 @@ def choose_subtitle_placement(
     - Otherwise pick among bottom/top/above-mouth and avoid overlapping >10% of face bbox.
     """
 
-    bottom_margin = int(max(play_res_y * 0.08, 120))
+    # Keep subtitles higher than the TikTok UI (buttons/captions) which often cover the lower third.
+    bottom_margin = int(max(play_res_y * 0.14, 240))
     top_margin = int(max(play_res_y * 0.08, 120))
 
     frames = _extract_frames(

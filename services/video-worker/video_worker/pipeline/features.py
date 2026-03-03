@@ -87,30 +87,63 @@ def compute_motion_score(
     """Compute a cheap motion score based on frame diffs.
 
     Returns a value ~[0..1]. Requires opencv-python.
+
+    Note: we avoid cv2.VideoCapture because it can be noisy/unreliable on some codecs
+    (e.g. AV1) depending on the underlying ffmpeg build.
     """
 
     try:
+        import shutil
+        import subprocess
+
         import cv2
+    except Exception:
+        return None
 
-        cap = cv2.VideoCapture(str(video_path))
-        if not cap.isOpened():
+    duration = max(0.0, end_seconds - start_seconds)
+    if duration <= 0.1:
+        return None
+
+    work_dir = video_path.parent / ".motion_score_tmp"
+    frames_dir = work_dir / "frames"
+
+    if frames_dir.exists():
+        shutil.rmtree(frames_dir)
+    frames_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                str(start_seconds),
+                "-i",
+                str(video_path),
+                "-t",
+                str(duration),
+                "-vf",
+                f"fps={float(sample_fps)},scale=320:-1",
+                str(frames_dir / "frame_%04d.jpg"),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        frame_paths = sorted(frames_dir.glob("frame_*.jpg"))
+        if len(frame_paths) < 2:
             return None
-
-        duration = max(0.0, end_seconds - start_seconds)
-        if duration <= 0.1:
-            return None
-
-        step = 1.0 / sample_fps
-        t = start_seconds
 
         prev = None
         diffs: list[float] = []
 
-        while t < end_seconds:
-            cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000.0)
-            ok, frame = cap.read()
-            if not ok or frame is None:
-                t += step
+        for p in frame_paths:
+            frame = cv2.imread(str(p))
+            if frame is None:
                 continue
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -120,9 +153,6 @@ def compute_motion_score(
                 diff = cv2.absdiff(prev, gray)
                 diffs.append(float(diff.mean()) / 255.0)
             prev = gray
-            t += step
-
-        cap.release()
 
         if not diffs:
             return None
@@ -132,6 +162,8 @@ def compute_motion_score(
         return float(max(0.0, score))
     except Exception:
         return None
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def find_first_non_silent_time(
@@ -244,9 +276,15 @@ def compute_face_presence_score(
     """Return a face presence ratio in [0..1] based on sparse sampling.
 
     Best-effort: returns None if OpenCV/MediaPipe isn't available.
+
+    Note: we extract frames with ffmpeg (instead of cv2.VideoCapture) to avoid
+    codec-specific issues/noisy logs in some environments.
     """
 
     try:
+        import shutil
+        import subprocess
+
         import cv2
         import mediapipe as mp
     except Exception:
@@ -256,26 +294,56 @@ def compute_face_presence_score(
     if duration <= 0.25:
         return None
 
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        return None
+    max_samples = max(1, int(max_samples))
+
+    # Sample approximately max_samples frames over the window.
+    effective_fps = min(float(sample_fps), float(max_samples) / max(0.01, duration))
+    effective_fps = max(0.1, effective_fps)
+
+    work_dir = video_path.parent / ".face_presence_tmp"
+    frames_dir = work_dir / "frames"
+
+    if frames_dir.exists():
+        shutil.rmtree(frames_dir)
+    frames_dir.mkdir(parents=True, exist_ok=True)
 
     detector = None
     try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                str(start_seconds),
+                "-i",
+                str(video_path),
+                "-t",
+                str(duration),
+                "-vf",
+                f"fps={effective_fps},scale=640:-1",
+                str(frames_dir / "frame_%04d.jpg"),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        frame_paths = sorted(frames_dir.glob("frame_*.jpg"))[:max_samples]
+        if not frame_paths:
+            return None
+
         detector = mp.solutions.face_detection.FaceDetection(
             model_selection=0, min_detection_confidence=0.5
         )
 
-        step = max(1.0 / max(0.1, sample_fps), duration / float(max(1, max_samples)))
-
-        t = float(start_seconds)
         total = 0
         hits = 0
-        while t < end_seconds and total < max_samples:
-            cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000.0)
-            ok, frame = cap.read()
-            if not ok or frame is None:
-                t += step
+        for p in frame_paths:
+            frame = cv2.imread(str(p))
+            if frame is None:
                 continue
 
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -283,8 +351,6 @@ def compute_face_presence_score(
             total += 1
             if res.detections:
                 hits += 1
-
-            t += step
 
         if total <= 0:
             return None
@@ -294,10 +360,7 @@ def compute_face_presence_score(
         return None
     finally:
         try:
-            cap.release()
-        finally:
             if detector is not None:
-                try:
-                    detector.close()
-                except Exception:
-                    pass
+                detector.close()
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
