@@ -11,7 +11,7 @@
   # 2) Set BASIC_AUTH_USER + BASIC_AUTH_HASH in your .env
   #    Note: the hash contains dollar signs; in a Docker Compose .env file you must escape them
   #    (typically by doubling them), or Compose will try to substitute variables.
-  basicauth {
+  basic_auth {
     {$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
   }
 

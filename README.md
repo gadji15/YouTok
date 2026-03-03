@@ -57,6 +57,8 @@ docker run --rm caddy:2-alpine caddy hash-password --plaintext "your-password"
 
 Note: le hash contient des caractères "dollar"; dans un fichier `.env` lu par Docker Compose, il faut les échapper (souvent en les doublant) sinon Compose tente de substituer des variables.
 
+Le `Caddyfile` utilise la directive `basic_auth` (nouveau nom; `basicauth` est déprécié).
+
 ### Activer le video-worker
 
 ```bash
