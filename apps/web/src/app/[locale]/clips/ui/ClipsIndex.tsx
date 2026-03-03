@@ -85,7 +85,7 @@ export function ClipsIndex() {
     [locale]
   );
 
-  const allClips = clips ?? [];
+  const allClips = useMemo(() => clips ?? [], [clips]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -173,7 +173,7 @@ export function ClipsIndex() {
         ) : !hasAny ? (
           <EmptyState
             title={t('empty.title')}
-            subtitle={t('empty.subtitle')}
+            description={t('empty.subtitle')}
             actionLabel={t('empty.action')}
             actionHref={`/${locale}/projects`}
           />

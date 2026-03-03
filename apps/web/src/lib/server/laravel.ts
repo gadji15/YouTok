@@ -5,12 +5,28 @@ type LaravelConfig = {
   internalApiSecret: string;
 };
 
+const DEFAULT_INTERNAL_API_SECRET = 'change-me';
+const DEFAULT_INTERNAL_API_SECRET_PREFIX = 'please-change-me';
+
 export function getLaravelConfig(): LaravelConfig {
+  const baseUrl = process.env.LARAVEL_BASE_URL ?? 'http://127.0.0.1:8080';
+  const internalApiSecret = process.env.INTERNAL_API_SECRET ?? DEFAULT_INTERNAL_API_SECRET;
+
+  if (process.env.NODE_ENV === 'production') {
+    if (
+      !internalApiSecret ||
+      internalApiSecret === DEFAULT_INTERNAL_API_SECRET ||
+      internalApiSecret.startsWith(DEFAULT_INTERNAL_API_SECRET_PREFIX)
+    ) {
+      throw new Error('INTERNAL_API_SECRET must be set to a non-default value in production');
+    }
+  }
+
   return {
     // Use 127.0.0.1 rather than localhost to avoid IPv6/::1 resolution issues on some setups.
     // You can override via LARAVEL_BASE_URL.
-    baseUrl: process.env.LARAVEL_BASE_URL ?? 'http://127.0.0.1:8080',
-    internalApiSecret: process.env.INTERNAL_API_SECRET ?? 'change-me',
+    baseUrl,
+    internalApiSecret,
   };
 }
 
@@ -39,8 +55,8 @@ export async function laravelInternalFetch(
       maybeCause instanceof Error
         ? maybeCause.message
         : typeof maybeCause === 'string'
-          ? maybeCause
-          : null;
+        ? maybeCause
+        : undefined;
 
     throw new Error(
       `laravelInternalFetch failed (${url.toString()}): ${message}${causeMessage ? ` (${causeMessage})` : ''}`,

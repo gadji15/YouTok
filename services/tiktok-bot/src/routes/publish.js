@@ -1,8 +1,13 @@
 const express = require('express');
+const fs = require('fs/promises');
 const path = require('path');
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isSafeAccountId(value) {
+  return typeof value === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(value);
 }
 
 function createPublishRouter({ queues }) {
@@ -17,9 +22,25 @@ function createPublishRouter({ queues }) {
       });
     }
 
+    if (!isSafeAccountId(accountId)) {
+      return res.status(400).json({ error: 'invalid_account_id' });
+    }
+
     const mode = (process.env.PUBLISH_MODE || 'stub').toLowerCase();
 
+    const root = path.resolve(process.env.PUBLISH_CLIP_ROOT || '/shared');
     const resolvedClipPath = path.resolve(clipPath);
+
+    const rel = path.relative(root, resolvedClipPath);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+      return res.status(400).json({ error: 'clip_path_outside_root' });
+    }
+
+    try {
+      await fs.access(resolvedClipPath);
+    } catch {
+      return res.status(400).json({ error: 'clip_path_not_found' });
+    }
 
     const job = await queues.enqueuePublish({
       clipPath: resolvedClipPath,

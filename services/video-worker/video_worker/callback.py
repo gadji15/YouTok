@@ -16,6 +16,20 @@ class JobStatus(str, Enum):
     failed = "failed"
 
 
+class TitleCandidate(BaseModel):
+    title: str
+    score: float
+    features: dict[str, float] | None = None
+
+
+class TitleCandidates(BaseModel):
+    provider: str | None = None
+    description: str | None = None
+    hashtags: list[str] = Field(default_factory=list)
+    candidates: list[TitleCandidate] = Field(default_factory=list)
+    top3: list[str] = Field(default_factory=list)
+
+
 class ClipArtifact(BaseModel):
     clip_id: str
     start_seconds: float
@@ -23,6 +37,7 @@ class ClipArtifact(BaseModel):
     score: float
     reason: str | None = None
     title: str | None = None
+    title_candidates: TitleCandidates | None = None
 
     video_path: str
     subtitles_ass_path: str | None = None
@@ -76,7 +91,7 @@ def post_callback(
     def _do_post() -> None:
         response = httpx.post(
             callback_url,
-            json=payload.model_dump(mode="json"),
+            json=payload.model_dump(mode="json", exclude_none=True),
             headers={
                 "X-Callback-Secret": callback_secret,
                 "Accept": "application/json",

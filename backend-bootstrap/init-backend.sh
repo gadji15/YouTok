@@ -3,6 +3,27 @@ set -euo pipefail
 
 cd /var/www/backend
 
+is_production_env() {
+  [ "${APP_ENV:-}" = "production" ]
+}
+
+if is_production_env; then
+  if [ -z "${INTERNAL_API_SECRET:-}" ] || [[ "${INTERNAL_API_SECRET}" == change-me ]] || [[ "${INTERNAL_API_SECRET}" == please-change* ]]; then
+    echo "[backend_init] ERROR: INTERNAL_API_SECRET must be set to a non-default value in production" >&2
+    exit 1
+  fi
+
+  if [ -z "${VIDEO_WORKER_CALLBACK_SECRET:-}" ] || [[ "${VIDEO_WORKER_CALLBACK_SECRET}" == change-me-too ]] || [[ "${VIDEO_WORKER_CALLBACK_SECRET}" == please-change* ]]; then
+    echo "[backend_init] ERROR: VIDEO_WORKER_CALLBACK_SECRET must be set to a non-default value in production" >&2
+    exit 1
+  fi
+
+  if [ -z "${ADMIN_PASSWORD:-}" ] || [[ "${ADMIN_PASSWORD}" == password ]] || [[ "${ADMIN_PASSWORD}" == please-change* ]]; then
+    echo "[backend_init] ERROR: ADMIN_PASSWORD must be changed from the default in production" >&2
+    exit 1
+  fi
+fi
+
 fix_env_perms() {
   if [ -f .env ]; then
     chown "${DOCKER_UID:-1000}":"${DOCKER_GID:-1000}" .env 2>/dev/null || true
@@ -109,6 +130,10 @@ upsert_env_kv() {
 {
   echo "[backend_init] syncing runtime env to .env" >&2
 
+  APP_ENV_EFFECTIVE="${APP_ENV:-local}"
+  APP_DEBUG_EFFECTIVE="${APP_DEBUG:-true}"
+  APP_URL_EFFECTIVE="${APP_URL:-http://localhost}"
+
   DB_CONNECTION_EFFECTIVE="${DB_CONNECTION:-mysql}"
   DB_HOST_EFFECTIVE="${DB_HOST:-db}"
   DB_PORT_EFFECTIVE="${DB_PORT:-3306}"
@@ -119,6 +144,10 @@ upsert_env_kv() {
   QUEUE_CONNECTION_EFFECTIVE="${QUEUE_CONNECTION:-database}"
   SESSION_DRIVER_EFFECTIVE="${SESSION_DRIVER:-file}"
   CACHE_STORE_EFFECTIVE="${CACHE_STORE:-file}"
+
+  upsert_env_kv APP_ENV "$APP_ENV_EFFECTIVE"
+  upsert_env_kv APP_DEBUG "$APP_DEBUG_EFFECTIVE"
+  upsert_env_kv APP_URL "$APP_URL_EFFECTIVE"
 
   upsert_env_kv DB_CONNECTION "$DB_CONNECTION_EFFECTIVE"
   upsert_env_kv DB_HOST "$DB_HOST_EFFECTIVE"

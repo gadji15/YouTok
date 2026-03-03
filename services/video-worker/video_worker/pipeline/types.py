@@ -11,6 +11,14 @@ class TranscriptSegment:
 
 
 @dataclass(frozen=True)
+class WordTiming:
+    word: str
+    start_seconds: float
+    end_seconds: float
+    confidence: float | None = None
+
+
+@dataclass(frozen=True)
 class ClipCandidate:
     clip_id: str
     start_seconds: float

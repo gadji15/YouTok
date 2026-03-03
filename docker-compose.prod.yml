@@ -22,6 +22,10 @@ services:
       context: ./apps/web
       dockerfile: Dockerfile
     restart: unless-stopped
+    ports:
+      # Restrict direct access to the Next.js server to localhost only.
+      # Public traffic should go through Caddy on 80/443.
+      - "127.0.0.1:3000:3000"
     environment:
       # Next server calls Laravel over the Docker network.
       LARAVEL_BASE_URL: http://backend:8000
@@ -41,8 +45,8 @@ services:
       - ./backend-bootstrap:/bootstrap:ro
       - video_worker_shared:/shared
     environment:
-      APP_ENV: ${APP_ENV:-production}
-      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_ENV: production
+      APP_DEBUG: "false"
       APP_URL: ${APP_URL}
       HOME: /tmp
       XDG_CONFIG_HOME: /tmp
@@ -81,8 +85,8 @@ services:
       - ./backend:/var/www/backend
       - video_worker_shared:/shared
     environment:
-      APP_ENV: ${APP_ENV:-production}
-      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_ENV: production
+      APP_DEBUG: "false"
       APP_URL: ${APP_URL}
       HOME: /tmp
       XDG_CONFIG_HOME: /tmp
@@ -121,8 +125,8 @@ services:
       - ./backend:/var/www/backend
       - video_worker_shared:/shared
     environment:
-      APP_ENV: ${APP_ENV:-production}
-      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_ENV: production
+      APP_DEBUG: "false"
       APP_URL: ${APP_URL}
       HOME: /tmp
       XDG_CONFIG_HOME: /tmp
@@ -186,7 +190,11 @@ services:
       VIDEO_WORKER_STORAGE_PATH: ${VIDEO_WORKER_STORAGE_PATH:-/shared/video-worker}
       VIDEO_WORKER_WHISPER_MODEL: ${VIDEO_WORKER_WHISPER_MODEL:-base}
       VIDEO_WORKER_WHISPER_DEVICE: ${VIDEO_WORKER_WHISPER_DEVICE:-cpu}
-      VIDEO_WORKER_SUBTITLE_TEMPLATE: ${VIDEO_WORKER_SUBTITLE_TEMPLATE:-modern}
+      VIDEO_WORKER_SUBTITLE_TEMPLATE: ${VIDEO_WORKER_SUBTITLE_TEMPLATE:-modern_karaoke}
+      VIDEO_WORKER_TITLE_PROVIDER: ${VIDEO_WORKER_TITLE_PROVIDER:-heuristic}
+      VIDEO_WORKER_OPENAI_API_KEY: ${VIDEO_WORKER_OPENAI_API_KEY:-}
+      VIDEO_WORKER_OPENAI_MODEL: ${VIDEO_WORKER_OPENAI_MODEL:-gpt-4.1-mini}
+      VIDEO_WORKER_OPENAI_BASE_URL: ${VIDEO_WORKER_OPENAI_BASE_URL:-https://api.openai.com/v1}
       VIDEO_WORKER_TARGET_FPS: ${VIDEO_WORKER_TARGET_FPS:-30}
       VIDEO_WORKER_ENABLE_LOUDNORM: ${VIDEO_WORKER_ENABLE_LOUDNORM:-false}
       VIDEO_WORKER_LOG_LEVEL: ${VIDEO_WORKER_LOG_LEVEL:-INFO}
@@ -209,7 +217,11 @@ services:
       VIDEO_WORKER_STORAGE_PATH: ${VIDEO_WORKER_STORAGE_PATH:-/shared/video-worker}
       VIDEO_WORKER_WHISPER_MODEL: ${VIDEO_WORKER_WHISPER_MODEL:-base}
       VIDEO_WORKER_WHISPER_DEVICE: ${VIDEO_WORKER_WHISPER_DEVICE:-cpu}
-      VIDEO_WORKER_SUBTITLE_TEMPLATE: ${VIDEO_WORKER_SUBTITLE_TEMPLATE:-modern}
+      VIDEO_WORKER_SUBTITLE_TEMPLATE: ${VIDEO_WORKER_SUBTITLE_TEMPLATE:-modern_karaoke}
+      VIDEO_WORKER_TITLE_PROVIDER: ${VIDEO_WORKER_TITLE_PROVIDER:-heuristic}
+      VIDEO_WORKER_OPENAI_API_KEY: ${VIDEO_WORKER_OPENAI_API_KEY:-}
+      VIDEO_WORKER_OPENAI_MODEL: ${VIDEO_WORKER_OPENAI_MODEL:-gpt-4.1-mini}
+      VIDEO_WORKER_OPENAI_BASE_URL: ${VIDEO_WORKER_OPENAI_BASE_URL:-https://api.openai.com/v1}
       VIDEO_WORKER_TARGET_FPS: ${VIDEO_WORKER_TARGET_FPS:-30}
       VIDEO_WORKER_ENABLE_LOUDNORM: ${VIDEO_WORKER_ENABLE_LOUDNORM:-false}
       VIDEO_WORKER_LOG_LEVEL: ${VIDEO_WORKER_LOG_LEVEL:-INFO}

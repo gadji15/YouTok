@@ -4,6 +4,10 @@ const path = require('path');
 
 const { getCookieDir, loadStorageState, saveStorageState } = require('../storage/cookieStore');
 
+function isSafeAccountId(value) {
+  return typeof value === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(value);
+}
+
 function createAccountsRouter() {
   const router = express.Router();
 
@@ -30,6 +34,9 @@ function createAccountsRouter() {
 
   router.get('/accounts/:id/storage-state', async (req, res) => {
     const accountId = req.params.id;
+    if (!isSafeAccountId(accountId)) {
+      return res.status(400).json({ error: 'invalid_account_id' });
+    }
 
     const state = await loadStorageState(accountId);
     if (!state) {
@@ -41,6 +48,9 @@ function createAccountsRouter() {
 
   router.put('/accounts/:id/storage-state', async (req, res) => {
     const accountId = req.params.id;
+    if (!isSafeAccountId(accountId)) {
+      return res.status(400).json({ error: 'invalid_account_id' });
+    }
 
     const state = req.body;
     if (!state || typeof state !== 'object') {

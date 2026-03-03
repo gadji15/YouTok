@@ -10,18 +10,29 @@ RUN apt-get update \
         libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./requirements.txt
-COPY requirements-whisper.txt ./requirements-whisper.txt
-COPY requirements-cv.txt ./requirements-cv.txt
+ARG PYTORCH_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu
 
-# Note: Whisper (and torch wheels) are heavy; kept separate so contributors can
-# run unit tests without pulling ML wheels.
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_EXTRA_INDEX_URL=${PYTORCH_EXTRA_INDEX_URL}
+
+# Note: Whisper (and torch wheels) are heavy; keep them in earlier layers so
+# changes to app deps don't force reinstalling torch.
+COPY requirements-whisper.txt ./requirements-whisper.txt
+RUN pip install --no-cache-dir --prefer-binary -r requirements-whisper.txt
+
+# WhisperX is heavy; we only install it on amd64 by default.
 #
 # MediaPipe does not provide wheels for all architectures; face detection is
 # best-effort and the pipeline still works without it.
+COPY requirements-align.txt ./requirements-align.txt
+COPY requirements-cv.txt ./requirements-cv.txt
 ARG TARGETARCH
-RUN pip install --no-cache-dir -r requirements.txt -r requirements-whisper.txt \
-    && if [ -z "$TARGETARCH" ] || [ "$TARGETARCH" = "amd64" ]; then pip install --no-cache-dir -r requirements-cv.txt; fi
+RUN if [ -z "$TARGETARCH" ] || [ "$TARGETARCH" = "amd64" ]; then pip install --no-cache-dir --prefer-binary -r requirements-align.txt -r requirements-cv.txt; fi
+
+COPY requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 COPY video_worker ./video_worker
 

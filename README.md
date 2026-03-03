@@ -21,9 +21,41 @@ make up
 
 Ouvrir: http://localhost:8080
 
-Identifiants par défaut (voir `.env`):
-- email: `admin@example.com`
-- password: `password`
+## Déploiement (prod, Docker + Caddy)
+
+Prérequis: un DNS qui pointe `${DOMAIN}` vers la machine.
+
+```bash
+cp .env.example .env
+# puis éditez .env (DOMAIN, ACME_EMAIL, APP_URL, secrets, mots de passe DB)
+
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Variables à définir (au minimum) dans `.env` en production:
+- `DOMAIN`, `ACME_EMAIL`, `APP_URL`
+- `INTERNAL_API_SECRET` (doit être un secret long, non défaut)
+- `VIDEO_WORKER_CALLBACK_SECRET` (doit être un secret long, non défaut)
+- `ADMIN_PASSWORD` (ne doit pas rester `password`)
+- `DB_PASSWORD`, `DB_ROOT_PASSWORD`
+
+Identifiants admin (définis dans `.env`):
+- email: `ADMIN_EMAILS`
+- password: `ADMIN_PASSWORD`
+
+### BasicAuth Caddy
+
+Recommandé si l'app est "interne" (V1).
+
+1) Générez un hash de mot de passe:
+
+```bash
+docker run --rm caddy:2-alpine caddy hash-password --plaintext "your-password"
+```
+
+2) Renseignez `BASIC_AUTH_USER` et `BASIC_AUTH_HASH` dans `.env`
+
+Note: le hash contient des caractères "dollar"; dans un fichier `.env` lu par Docker Compose, il faut les échapper (souvent en les doublant) sinon Compose tente de substituer des variables.
 
 ### Activer le video-worker
 

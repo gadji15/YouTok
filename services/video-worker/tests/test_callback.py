@@ -39,6 +39,8 @@ def test_post_callback_sends_header_and_json(monkeypatch) -> None:
     assert seen["json"]["stage"] == "download"
     assert seen["json"]["progress_percent"] == 10
     assert seen["json"]["message"] == "Downloading"
+    assert "artifacts" not in seen["json"]
+    assert "error" not in seen["json"]
     assert seen["timeout"] == 12.5
 
 
@@ -71,6 +73,16 @@ def test_callback_payload_includes_clip_subtitles_srt_path() -> None:
                     start_seconds=0.0,
                     end_seconds=10.0,
                     score=0.5,
+                    title_candidates={
+                        "provider": "heuristic",
+                        "description": "Desc",
+                        "hashtags": ["#fyp", "#viral", "#learnontiktok"],
+                        "candidates": [
+                            {"title": "Stop doing this", "score": 0.9},
+                            {"title": "What if you did this?", "score": 0.7},
+                        ],
+                        "top3": ["Stop doing this", "What if you did this?"],
+                    },
                     video_path="/shared/clip_001/video.mp4",
                     subtitles_ass_path="/shared/clip_001/subtitles.ass",
                     subtitles_srt_path="/shared/clip_001/subtitles.srt",
@@ -82,3 +94,4 @@ def test_callback_payload_includes_clip_subtitles_srt_path() -> None:
     data = payload.model_dump(mode="json")
 
     assert data["artifacts"]["clips"][0]["subtitles_srt_path"] == "/shared/clip_001/subtitles.srt"
+    assert data["artifacts"]["clips"][0]["title_candidates"]["provider"] == "heuristic"

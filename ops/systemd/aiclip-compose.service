@@ -1,0 +1,16 @@
+[Unit]
+Description=AIClip (docker compose)
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/aiclip
+EnvironmentFile=/opt/aiclip/.env
+ExecStart=/usr/bin/docker compose --env-file /opt/aiclip/.env -f /opt/aiclip/docker-compose.prod.yml up -d --build
+ExecStop=/usr/bin/docker compose --env-file /opt/aiclip/.env -f /opt/aiclip/docker-compose.prod.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

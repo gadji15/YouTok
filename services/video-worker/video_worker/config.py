@@ -69,8 +69,28 @@ class Settings(BaseSettings):
     )
 
     subtitle_template: str = Field(
-        "modern",
+        "modern_karaoke",
         description="Subtitle template: default|modern|karaoke|modern_karaoke",
+    )
+
+    title_provider: str = Field(
+        "heuristic",
+        description="Title generation provider: heuristic|openai",
+    )
+
+    openai_api_key: str = Field(
+        "",
+        description="OpenAI API key used when title_provider=openai",
+    )
+
+    openai_model: str = Field(
+        "gpt-4.1-mini",
+        description="OpenAI model used when title_provider=openai",
+    )
+
+    openai_base_url: str = Field(
+        "https://api.openai.com/v1",
+        description="OpenAI API base URL",
     )
 
     target_fps: int = Field(30, ge=1, le=60)
@@ -90,6 +110,11 @@ class Settings(BaseSettings):
 
     rq_job_timeout_seconds: int = Field(60 * 45, ge=60)
     rq_result_ttl_seconds: int = Field(60 * 60, ge=0)
+
+    # Observability
+    metrics_enabled: bool = Field(True, description="Expose Prometheus metrics at /metrics")
+    sentry_dsn: str = Field("", description="Sentry DSN (optional)")
+    sentry_traces_sample_rate: float = Field(0.0, ge=0.0, le=1.0)
 
     log_level: str = Field("INFO")
 

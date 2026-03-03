@@ -10,6 +10,7 @@ use App\Jobs\SubmitVideoWorkerJob;
 use App\Models\Clip;
 use App\Models\PipelineEvent;
 use App\Models\Project;
+use App\Support\SharedStorage;
 use App\Support\Youtube;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -121,6 +122,20 @@ class ProjectController extends Controller
     public function destroy(Project $project): RedirectResponse
     {
         $this->authorize('delete', $project);
+
+        $project->load(['clips']);
+
+        SharedStorage::deleteFile($project->source_video_path);
+        SharedStorage::deleteFile($project->audio_path);
+        SharedStorage::deleteFile($project->transcript_json_path);
+        SharedStorage::deleteFile($project->subtitles_srt_path);
+        SharedStorage::deleteFile($project->clips_json_path);
+
+        foreach ($project->clips as $clip) {
+            SharedStorage::deleteFile($clip->video_path);
+            SharedStorage::deleteFile($clip->subtitles_ass_path);
+            SharedStorage::deleteFile($clip->subtitles_srt_path);
+        }
 
         // Clean up related records (clips cascade, but pipeline events are nullOnDelete).
         PipelineEvent::query()->where('project_id', $project->id)->delete();
