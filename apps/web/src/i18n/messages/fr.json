@@ -88,8 +88,12 @@
     },
     "stages": {
       "download": "Téléchargement",
+      "extract_audio": "Extraction audio",
       "transcribe": "Transcription",
+      "align": "Alignement des mots",
       "segment": "Segmentation",
+      "titles": "Titres",
+      "render_clips": "Rendu des clips",
       "render": "Rendu",
       "done": "Terminé"
     },

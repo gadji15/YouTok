@@ -78,15 +78,33 @@ def _ass_ts(seconds: float) -> str:
 
 
 def _wrap(text: str, *, max_chars: int = 32) -> str:
+    # break words that exceed max_chars to avoid horizontal overflow
+    def _break_long_word(word: str) -> list[str]:
+        if len(word) <= max_chars:
+            return [word]
+        parts: list[str] = []
+        idx = 0
+        while idx < len(word):
+            parts.append(word[idx : idx + max_chars])
+            idx += max_chars
+        return parts
+
     words = text.split()
     if not words:
         return ""
+
+    expanded: list[str] = []
+    for w in words:
+        if len(w) > max_chars:
+            expanded.extend(_break_long_word(w))
+        else:
+            expanded.append(w)
 
     lines: list[str] = []
     cur: list[str] = []
     cur_len = 0
 
-    for w in words:
+    for w in expanded:
         add = len(w) + (1 if cur else 0)
         if cur and cur_len + add > max_chars:
             lines.append(" ".join(cur))
@@ -116,10 +134,11 @@ def write_stylized_ass_for_clip(
 
     template = (template or "default").lower().strip()
 
-    style_line = "Style: Default,Noto Sans,58,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,80,80,220,1"
+    # increase horizontal margins to give extra padding from screen edges
+    style_line = "Style: Default,Noto Sans,58,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,220,1"
     if template in {"modern", "modern_karaoke"}:
         # A cleaner, more modern look: slightly larger, stronger outline, and a safer bottom margin.
-        style_line = "Style: Default,Noto Sans,62,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,80,80,260,1"
+        style_line = "Style: Default,Noto Sans,62,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,260,1"
 
     header = "\n".join(
         [
@@ -230,13 +249,13 @@ def write_word_level_ass_for_clip(
     # - Karaoke: Primary = highlight, Secondary = base
     # - Non-karaoke: Primary = base
     if karaoke_enabled:
-        style_line = "Style: Default,Noto Sans,62,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,80,80,160,1"
+        style_line = "Style: Default,Noto Sans,62,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
         if template == "karaoke":
-            style_line = "Style: Default,Noto Sans,58,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,80,80,120,1"
+            style_line = "Style: Default,Noto Sans,58,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
     else:
-        style_line = "Style: Default,Noto Sans,62,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,80,80,160,1"
+        style_line = "Style: Default,Noto Sans,62,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
         if template == "default":
-            style_line = "Style: Default,Noto Sans,58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,80,80,120,1"
+            style_line = "Style: Default,Noto Sans,58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
 
     header = "\n".join(
         [
@@ -294,12 +313,30 @@ def write_word_level_ass_for_clip(
         karaoke_enabled = False
 
     def _split_two_lines(parts: list[str], lens: list[int]) -> tuple[list[str], list[str]]:
+        # split text parts into two lines, breaking overlong words if necessary
+        def _break_part(p: str) -> list[str]:
+            if len(p) <= max_chars_per_line:
+                return [p]
+            # break mid-part on max_chars_per_line boundaries
+            return [p[i : i + max_chars_per_line] for i in range(0, len(p), max_chars_per_line)]
+
+        expanded_parts: list[str] = []
+        expanded_lens: list[int] = []
+        for p, ln in zip(parts, lens):
+            if ln > max_chars_per_line:
+                subs = _break_part(p)
+                expanded_parts.extend(subs)
+                expanded_lens.extend([len(s) for s in subs])
+            else:
+                expanded_parts.append(p)
+                expanded_lens.append(ln)
+
         line1: list[str] = []
         line2: list[str] = []
         c1 = 0
         c2 = 0
 
-        for p, ln in zip(parts, lens):
+        for p, ln in zip(expanded_parts, expanded_lens):
             add1 = ln + (1 if line1 else 0)
             add2 = ln + (1 if line2 else 0)
 

@@ -1,0 +1,10 @@
+[
+  {"word":"Bonjour","start_seconds":0.0,"end_seconds":0.5,"confidence":0.99},
+  {"word":"tout","start_seconds":0.5,"end_seconds":0.7,"confidence":0.98},
+  {"word":"le","start_seconds":0.7,"end_seconds":0.8,"confidence":0.97},
+  {"word":"monde","start_seconds":0.8,"end_seconds":1.2,"confidence":0.96},
+  {"word":"Ceci","start_seconds":1.3,"end_seconds":1.6,"confidence":0.95},
+  {"word":"est","start_seconds":1.6,"end_seconds":1.8,"confidence":0.95},
+  {"word":"un","start_seconds":1.8,"end_seconds":1.9,"confidence":0.95},
+  {"word":"test","start_seconds":1.9,"end_seconds":2.3,"confidence":0.95}
+]

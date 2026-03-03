@@ -147,6 +147,50 @@ def render_clips(
             output_path=out_srt,
         )
 
+        # Attempt to produce word-level timings and an ASS via the new tools.
+        try:
+            repo_root = Path(__file__).resolve().parents[4]
+            tools_dir = repo_root / "services" / "video-worker" / "video_worker" / "tools"
+
+            audio_wav = clip_dir / "audio.wav"
+            words_json = clip_dir / "words.json"
+
+            # extract clip audio for alignment
+            ff_args = [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                str(clip.start_seconds),
+                "-i",
+                str(source_video),
+                "-t",
+                str(max(0.01, clip.end_seconds - clip.start_seconds)),
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                str(audio_wav),
+            ]
+            run(ff_args, logger=logger.bind(clip_id=clip.clip_id))
+
+            # run whisperx_align.py (best-effort)
+            wxa = tools_dir / "whisperx_align.py"
+            if wxa.exists():
+                run(["python3", str(wxa), "--wav", str(audio_wav), "--out", str(words_json)], logger=logger.bind(clip_id=clip.clip_id))
+
+            # If words.json produced, call make_ass to create an ASS file
+            mak = tools_dir / "make_ass.py"
+            if words_json.exists() and mak.exists():
+                run(["python3", str(mak), "--words", str(words_json), "--out", str(out_ass), "--video", str(source_video)], logger=logger.bind(clip_id=clip.clip_id))
+                # mark that we've generated the ASS from tools
+                used_source = "word_timings_tools"
+        except Exception:
+            logger.exception("external_ass_generation_failed", clip_id=clip.clip_id)
+
         if subtitles_enabled:
             placement = choose_subtitle_placement(
                 source_video=source_video,
@@ -167,11 +211,11 @@ def render_clips(
             used_source = "stylized"
 
             # Prefer true word timings (WhisperX or heuristic approximation from the full transcript).
-            if word_timings and len(word_timings) > 0:
+            if (word_timings and len(word_timings) > 0) or (out_ass.exists() and used_source == "word_timings_tools"):
                 write_word_level_ass_for_clip(
                     clip_start_seconds=clip.start_seconds,
                     clip_end_seconds=clip.end_seconds,
-                    words=word_timings,
+                    words=word_timings or [],
                     output_path=out_ass,
                     placement=(placement.alignment, placement.x, placement.y),
                     template=subtitle_template,
