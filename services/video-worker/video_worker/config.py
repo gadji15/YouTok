@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     )
 
     subtitle_template: str = Field(
-        "modern",
+        "modern_karaoke",
         description="Subtitle template: default|modern|karaoke|modern_karaoke",
     )
 

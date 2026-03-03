@@ -30,7 +30,7 @@ class ProjectApiCreateTest extends TestCase
                 'subtitles_enabled' => false,
                 'clip_min_seconds' => 60,
                 'clip_max_seconds' => 180,
-                'subtitle_template' => 'modern',
+                'subtitle_template' => 'modern_karaoke',
             ])
             ->assertCreated();
 
@@ -42,7 +42,7 @@ class ProjectApiCreateTest extends TestCase
         $this->assertFalse($project->subtitles_enabled);
         $this->assertSame(60, $project->clip_min_seconds);
         $this->assertSame(180, $project->clip_max_seconds);
-        $this->assertSame('modern', $project->subtitle_template);
+        $this->assertSame('modern_karaoke', $project->subtitle_template);
 
         $this->assertTrue(PipelineEvent::query()
             ->where('project_id', $projectId)

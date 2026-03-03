@@ -87,6 +87,42 @@ def render_clips(
         s = p.as_posix()
         return s.replace('\\', '\\\\').replace(':', '\\:').replace(',', '\\,')
 
+    def _best_effort_log_ass_stats(*, ass_path: Path, clip_id: str) -> None:
+        try:
+            text = ass_path.read_text(encoding="utf-8", errors="replace")
+
+            dialogue_count = text.count("Dialogue:")
+            has_karaoke = "\\k" in text
+
+            import re
+
+            rx = re.compile(r"^Dialogue:\\s*[^,]*,([^,]+),([^,]+),", re.M)
+
+            def _ass_ts_to_seconds(t: str) -> float:
+                # h:mm:ss.cs
+                h, m, rest = t.split(":")
+                s, cs = rest.split(".")
+                return int(h) * 3600 + int(m) * 60 + int(s) + int(cs) / 100.0
+
+            durations: list[float] = []
+            for start, end in rx.findall(text):
+                s = _ass_ts_to_seconds(start)
+                e = _ass_ts_to_seconds(end)
+                if e >= s:
+                    durations.append(e - s)
+
+            max_event_seconds = max(durations) if durations else None
+
+            logger.info(
+                "subtitles.ass_stats",
+                clip_id=clip_id,
+                dialogue_count=dialogue_count,
+                max_event_seconds=max_event_seconds,
+                has_karaoke=has_karaoke,
+            )
+        except Exception:
+            logger.exception("subtitles.ass_stats_failed", clip_id=clip_id)
+
     fps = max(1, int(target_fps))
 
     for clip in clips:
@@ -132,6 +168,8 @@ def render_clips(
                     output_path=out_ass,
                     template=subtitle_template,
                 )
+
+            _best_effort_log_ass_stats(ass_path=out_ass, clip_id=clip.clip_id)
 
         if out_video.exists() and out_video.stat().st_size > 0:
             rendered.append(

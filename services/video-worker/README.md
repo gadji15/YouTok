@@ -28,7 +28,7 @@ Common:
 - `VIDEO_WORKER_CLIP_MIN_SECONDS` (default: `60`)
 - `VIDEO_WORKER_CLIP_MAX_SECONDS` (default: `180`)
 - `VIDEO_WORKER_SUBTITLES_ENABLED` (default: `true`)
-- `VIDEO_WORKER_SUBTITLE_TEMPLATE` (default: `modern`; one of `default`, `modern`, `karaoke`, `modern_karaoke`)
+- `VIDEO_WORKER_SUBTITLE_TEMPLATE` (default: `modern_karaoke`; one of `default`, `modern`, `karaoke`, `modern_karaoke`)
 - `VIDEO_WORKER_TITLE_PROVIDER` (default: `heuristic`; one of `heuristic`, `openai`)
 - `VIDEO_WORKER_OPENAI_API_KEY` (default: empty; required when `TITLE_PROVIDER=openai`)
 - `VIDEO_WORKER_OPENAI_MODEL` (default: `gpt-4.1-mini`)

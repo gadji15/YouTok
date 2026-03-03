@@ -55,7 +55,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
         subtitles_enabled: subtitlesEnabled,
         clip_min_seconds: 60,
         clip_max_seconds: clipMaxSeconds,
-        subtitle_template: 'modern',
+        subtitle_template: 'modern_karaoke',
       }),
     });
 

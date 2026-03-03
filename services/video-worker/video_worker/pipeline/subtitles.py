@@ -362,7 +362,10 @@ def write_word_level_ass_for_clip(
 
     max_words_per_event = max_words_per_line * 2
     max_chars_per_event = max_chars_per_line * 2
-    max_event_seconds = 4.5
+
+    # Without karaoke, long events feel like "frozen" subtitles because the text doesn't change.
+    # With karaoke enabled, keeping events a bit longer is fine since highlighting moves.
+    max_event_seconds = 6.0 if karaoke_enabled else 2.8
 
     chunks: list[list[WordTiming]] = []
     cur: list[WordTiming] = []

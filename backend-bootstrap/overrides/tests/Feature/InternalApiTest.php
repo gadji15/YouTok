@@ -46,7 +46,7 @@ class InternalApiTest extends TestCase
             'subtitles_enabled' => false,
             'clip_min_seconds' => 60,
             'clip_max_seconds' => 180,
-            'subtitle_template' => 'modern',
+            'subtitle_template' => 'modern_karaoke',
         ]);
 
         $this->getJson('/api/projects')->assertForbidden();
