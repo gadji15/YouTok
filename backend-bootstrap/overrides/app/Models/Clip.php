@@ -35,6 +35,7 @@ class Clip extends Model
         'score',
         'reason',
         'title',
+        'title_candidates',
         'status',
         'video_path',
         'subtitles_ass_path',
@@ -46,6 +47,7 @@ class Clip extends Model
         'start_seconds' => 'float',
         'end_seconds' => 'float',
         'score' => 'float',
+        'title_candidates' => 'array',
         'tiktok_published_at' => 'datetime',
     ];
 

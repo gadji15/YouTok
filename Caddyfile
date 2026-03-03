@@ -1,19 +1,21 @@
 {
-  email {$ACME_EMAIL}
+  # Optional: contact email used for ACME registration.
+  # If you leave ACME_EMAIL empty (e.g. local HTTP mode), keep this commented.
+  # email {$ACME_EMAIL}
 }
 
 {$DOMAIN} {
   encode gzip
 
-  # Optional: protect the whole app with basic auth (recommended for an internal admin SaaS).
+  # Protect the whole app with basic auth (recommended for an internal admin SaaS).
   # 1) Generate the hash on the server:
-  #    docker run --rm caddy:2-alpine caddy hash-password --plaintext 'your-password'
+  #    docker run --rm caddy:2-alpine caddy hash-password --plaintext "your-password"
   # 2) Set BASIC_AUTH_USER + BASIC_AUTH_HASH in your .env
-  # 3) Uncomment the block below
-  #
-  # basicauth {
-  #   {$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
-  # }
+  #    Note: the hash contains dollar signs; in a Docker Compose .env file you must escape them
+  #    (typically by doubling them), or Compose will try to substitute variables.
+  basic_auth {
+    {$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+  }
 
   reverse_proxy web:3000
 }

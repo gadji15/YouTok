@@ -79,7 +79,12 @@ function createInMemoryQueue() {
 function createQueues() {
   const mode = (process.env.PUBLISH_MODE || 'stub').toLowerCase();
   const isTest = process.env.NODE_ENV === 'test';
+  const isProduction = process.env.NODE_ENV === 'production';
   const redisUrl = isTest ? '' : process.env.PUBLISH_REDIS_URL || '';
+
+  if (isProduction && !redisUrl) {
+    throw new Error('PUBLISH_REDIS_URL must be set in production (redis queue required)');
+  }
 
   if (!redisUrl) {
     const q = createInMemoryQueue();

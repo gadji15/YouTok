@@ -78,7 +78,9 @@
     },
     "actions": {
       "retry": "Relancer",
-      "delete": "Supprimer"
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer ce projet et tous ses clips ? Cette action est irréversible.",
+      "deleting": "Suppression…"
     },
     "overview": {
       "title": "Aperçu",
@@ -88,8 +90,12 @@
     },
     "stages": {
       "download": "Téléchargement",
+      "extract_audio": "Extraction audio",
       "transcribe": "Transcription",
+      "align": "Alignement mots",
       "segment": "Segmentation",
+      "titles": "Titres",
+      "render_clips": "Rendu",
       "render": "Rendu",
       "done": "Terminé"
     },
@@ -265,10 +271,22 @@
       "duration": "Durée",
       "format": "Format"
     },
+    "titles": {
+      "title": "Titres",
+      "subtitle": "Suggestions de titres viraux générées depuis la transcription.",
+      "suggested": "Titre suggéré",
+      "empty": "Aucune suggestion de titre pour le moment.",
+      "copy": "Copier",
+      "copied": "Copié",
+      "score": "Score : {value}%"
+    },
     "actions": {
       "title": "Actions",
       "subtitle": "Téléchargements et liens.",
       "download": "Télécharger",
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer ce clip ? Cette action est irréversible.",
+      "deleting": "Suppression…",
       "copyLink": "Copier le lien",
       "openInNewTab": "Ouvrir dans un nouvel onglet"
     }

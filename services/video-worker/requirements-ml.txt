@@ -3,5 +3,8 @@
 # For GPU builds, install an appropriate torch build in your image/environment.
 -r requirements-whisper.txt
 
+# Forced alignment / word-level timestamps (optional but recommended)
+-r requirements-align.txt
+
 # Optional video CV deps for face detection / auto-reframe.
 -r requirements-cv.txt

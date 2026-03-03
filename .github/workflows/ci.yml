@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  video-worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/video-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            services/video-worker/requirements.txt
+            services/video-worker/requirements-dev.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: PYTHONPATH=. pytest -q

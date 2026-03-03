@@ -2,9 +2,12 @@ import { laravelInternalFetch } from '@/lib/server/laravel';
 
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id?: string }> }
 ) {
   const { id } = await params;
+  if (!id) {
+    return new Response('Missing clip id.', { status: 400 });
+  }
 
   const range = req.headers.get('range');
 

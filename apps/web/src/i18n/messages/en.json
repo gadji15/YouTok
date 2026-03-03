@@ -78,7 +78,9 @@
     },
     "actions": {
       "retry": "Retry",
-      "delete": "Delete"
+      "delete": "Delete",
+      "deleteConfirm": "Delete this project and all its clips? This cannot be undone.",
+      "deleting": "Deleting…"
     },
     "overview": {
       "title": "Overview",
@@ -88,8 +90,12 @@
     },
     "stages": {
       "download": "Download",
+      "extract_audio": "Extract audio",
       "transcribe": "Transcription",
+      "align": "Word alignment",
       "segment": "Segmentation",
+      "titles": "Titles",
+      "render_clips": "Render",
       "render": "Render",
       "done": "Done"
     },
@@ -265,10 +271,22 @@
       "duration": "Duration",
       "format": "Format"
     },
+    "titles": {
+      "title": "Titles",
+      "subtitle": "Viral title suggestions generated from the transcript.",
+      "suggested": "Suggested title",
+      "empty": "No title suggestions yet.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "score": "Score: {value}%"
+    },
     "actions": {
       "title": "Actions",
       "subtitle": "Downloads and links.",
       "download": "Download",
+      "delete": "Delete",
+      "deleteConfirm": "Delete this clip? This cannot be undone.",
+      "deleting": "Deleting…",
       "copyLink": "Copy link",
       "openInNewTab": "Open in new tab"
     }

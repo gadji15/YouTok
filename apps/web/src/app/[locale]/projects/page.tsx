@@ -21,7 +21,16 @@ type ProjectRow = {
   updatedAt: string | null;
 };
 
-const knownStages = new Set(["download", "transcribe", "segment", "render", "done"]);
+const knownStages = new Set([
+  "download",
+  "extract_audio",
+  "transcribe",
+  "align",
+  "segment",
+  "titles",
+  "render_clips",
+  "done",
+]);
 
 export default async function ProjectsPage({
   params,
@@ -101,9 +110,17 @@ export default async function ProjectsPage({
                     <div className="mt-2 flex items-center gap-2">
                       <Progress value={p.progress} className="h-1.5" />
                       <div className="shrink-0 text-[11px] font-medium text-[var(--text-muted)]">
-                        {p.stage && knownStages.has(p.stage)
-                          ? tProject(`stages.${p.stage}`)
-                          : p.stage ?? "—"}
+                        {p.stage ? (
+                          p.stage === "completed" ? (
+                            tProject("stages.done")
+                          ) : knownStages.has(p.stage) ? (
+                            tProject(`stages.${p.stage}`)
+                          ) : (
+                            p.stage
+                          )
+                        ) : (
+                          "—"
+                        )}
                       </div>
                     </div>
                   </div>

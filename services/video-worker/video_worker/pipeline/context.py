@@ -47,5 +47,9 @@ class JobContext:
         return self.artifacts_dir / "subtitles.srt"
 
     @property
+    def words_json_path(self) -> Path:
+        return self.artifacts_dir / "words.json"
+
+    @property
     def clips_json_path(self) -> Path:
         return self.artifacts_dir / "clips.json"

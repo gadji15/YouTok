@@ -165,6 +165,16 @@ class WorkerCallbackTest extends TestCase
                             'score' => 0.5,
                             'reason' => 'interesting',
                             'title' => 'Un hook viral pour tester',
+                            'title_candidates' => [
+                                'provider' => 'heuristic',
+                                'description' => 'Desc',
+                                'hashtags' => ['#pourtoi', '#conseils', '#tiktok'],
+                                'candidates' => [
+                                    ['title' => 'Un hook viral pour tester', 'score' => 0.9],
+                                    ['title' => 'Et si tu faisais ça ?', 'score' => 0.7],
+                                ],
+                                'top3' => ['Un hook viral pour tester', 'Et si tu faisais ça ?'],
+                            ],
                             'video_path' => '/shared/c1.mp4',
                             'subtitles_ass_path' => '/shared/c1.ass',
                             'subtitles_srt_path' => '/shared/c1.srt',
@@ -185,6 +195,8 @@ class WorkerCallbackTest extends TestCase
         $this->assertSame(ClipStatus::ready, $clip->status);
         $this->assertSame('/shared/c1.mp4', $clip->video_path);
         $this->assertSame('Un hook viral pour tester', $clip->title);
+        $this->assertIsArray($clip->title_candidates);
+        $this->assertSame('heuristic', $clip->title_candidates['provider']);
     }
 
     public function test_worker_callback_does_not_overwrite_progress_after_completion(): void

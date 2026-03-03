@@ -8,8 +8,10 @@ from ..utils.ffprobe import probe_video
 from ..utils.subprocess import run
 from .face_tracking import estimate_face_center_x
 from .saliency import estimate_motion_center_x
-from .subtitles import write_srt_for_clip, write_stylized_ass_for_clip
-from .types import ClipCandidate, TranscriptSegment
+from .subtitle_placement import choose_subtitle_placement
+from .subtitles import write_srt_for_clip, write_stylized_ass_for_clip, write_word_level_ass_for_clip
+from .types import ClipCandidate, TranscriptSegment, WordTiming
+from .word_alignment import approximate_words_from_segments
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -75,6 +77,7 @@ def render_clips(
     subtitle_template: str = "default",
     target_fps: int = 30,
     enable_loudnorm: bool = False,
+    word_timings: list[WordTiming] | None = None,
 ) -> list[dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -84,6 +87,48 @@ def render_clips(
         # ffmpeg filter args treat ':', ',', and '\\' specially.
         s = p.as_posix()
         return s.replace('\\', '\\\\').replace(':', '\\:').replace(',', '\\,')
+
+    def _best_effort_log_ass_stats(*, ass_path: Path, clip_id: str, source: str) -> dict | None:
+        try:
+            text = ass_path.read_text(encoding="utf-8", errors="replace")
+
+            dialogue_count = text.count("Dialogue:")
+            has_karaoke = "\\k" in text
+            has_pos = "\\pos(" in text
+
+            import re
+
+            rx = re.compile(r"^Dialogue:\\s*[^,]*,([^,]+),([^,]+),", re.M)
+
+            def _ass_ts_to_seconds(t: str) -> float:
+                # h:mm:ss.cs
+                h, m, rest = t.split(":")
+                s, cs = rest.split(".")
+                return int(h) * 3600 + int(m) * 60 + int(s) + int(cs) / 100.0
+
+            durations: list[float] = []
+            for start, end in rx.findall(text):
+                s = _ass_ts_to_seconds(start)
+                e = _ass_ts_to_seconds(end)
+                if e >= s:
+                    durations.append(e - s)
+
+            max_event_seconds = max(durations) if durations else None
+
+            stats = {
+                "clip_id": clip_id,
+                "dialogue_count": dialogue_count,
+                "max_event_seconds": max_event_seconds,
+                "has_karaoke": has_karaoke,
+                "has_pos": has_pos,
+                "source": source,
+            }
+
+            logger.info("subtitles.ass_stats", **stats)
+            return stats
+        except Exception:
+            logger.exception("subtitles.ass_stats_failed", clip_id=clip_id)
+            return None
 
     fps = max(1, int(target_fps))
 
@@ -103,13 +148,92 @@ def render_clips(
         )
 
         if subtitles_enabled:
-            write_stylized_ass_for_clip(
+            placement = choose_subtitle_placement(
+                source_video=source_video,
                 clip_start_seconds=clip.start_seconds,
                 clip_end_seconds=clip.end_seconds,
-                segments=transcript_segments,
-                output_path=out_ass,
-                template=subtitle_template,
+                play_res_x=1080,
+                play_res_y=1920,
+                work_dir=clip_dir / "subtitle_placement",
+                logger=logger.bind(clip_id=clip.clip_id),
             )
+
+            clip_segments = [
+                s
+                for s in transcript_segments
+                if s.text.strip() and s.end_seconds > clip.start_seconds and s.start_seconds < clip.end_seconds
+            ]
+
+            used_source = "stylized"
+
+            # Prefer true word timings (WhisperX or heuristic approximation from the full transcript).
+            if word_timings and len(word_timings) > 0:
+                write_word_level_ass_for_clip(
+                    clip_start_seconds=clip.start_seconds,
+                    clip_end_seconds=clip.end_seconds,
+                    words=word_timings,
+                    output_path=out_ass,
+                    placement=(placement.alignment, placement.x, placement.y),
+                    template=subtitle_template,
+                )
+                used_source = "word_timings"
+            else:
+                approx = approximate_words_from_segments(segments=clip_segments)
+                if approx:
+                    logger.info(
+                        "subtitles.word_timings_fallback_approximate",
+                        clip_id=clip.clip_id,
+                        word_count=len(approx),
+                    )
+                    write_word_level_ass_for_clip(
+                        clip_start_seconds=clip.start_seconds,
+                        clip_end_seconds=clip.end_seconds,
+                        words=approx,
+                        output_path=out_ass,
+                        placement=(placement.alignment, placement.x, placement.y),
+                        template=subtitle_template,
+                    )
+                    used_source = "approximate"
+                else:
+                    write_stylized_ass_for_clip(
+                        clip_start_seconds=clip.start_seconds,
+                        clip_end_seconds=clip.end_seconds,
+                        segments=transcript_segments,
+                        output_path=out_ass,
+                        template=subtitle_template,
+                    )
+                    used_source = "stylized"
+
+            stats = _best_effort_log_ass_stats(ass_path=out_ass, clip_id=clip.clip_id, source=used_source)
+
+            # Safety net: if we ended up with a tiny number of very long Dialogue events,
+            # regenerate using approximate timings (prevents "frozen" subtitles even if
+            # upstream word timings are sparse/broken).
+            if (
+                used_source == "word_timings"
+                and stats
+                and ((stats.get("dialogue_count") or 0) <= 3 or (stats.get("max_event_seconds") or 0) > 10)
+            ):
+                approx = approximate_words_from_segments(segments=clip_segments)
+                if approx:
+                    logger.info(
+                        "subtitles.regenerate_with_approximate_timings",
+                        clip_id=clip.clip_id,
+                        word_count=len(approx),
+                    )
+                    write_word_level_ass_for_clip(
+                        clip_start_seconds=clip.start_seconds,
+                        clip_end_seconds=clip.end_seconds,
+                        words=approx,
+                        output_path=out_ass,
+                        placement=(placement.alignment, placement.x, placement.y),
+                        template=subtitle_template,
+                    )
+                    _best_effort_log_ass_stats(
+                        ass_path=out_ass,
+                        clip_id=clip.clip_id,
+                        source="approximate_regenerated",
+                    )
 
         if out_video.exists() and out_video.stat().st_size > 0:
             rendered.append(

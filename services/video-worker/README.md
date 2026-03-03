@@ -7,6 +7,7 @@ Python service that accepts YouTube video processing jobs, runs a clip-generatio
 - FastAPI API server (`video_worker.api:app`)
   - `POST /jobs` enqueue a job into Redis via RQ
   - `GET /health` basic liveness + Redis ping
+  - `GET /metrics` Prometheus metrics (when `VIDEO_WORKER_METRICS_ENABLED=true`)
 - RQ worker process (`python -m video_worker.worker`)
   - executes the pipeline steps and posts results to the provided callback URL
 
@@ -27,10 +28,17 @@ Common:
 - `VIDEO_WORKER_CLIP_MIN_SECONDS` (default: `60`)
 - `VIDEO_WORKER_CLIP_MAX_SECONDS` (default: `180`)
 - `VIDEO_WORKER_SUBTITLES_ENABLED` (default: `true`)
-- `VIDEO_WORKER_SUBTITLE_TEMPLATE` (default: `modern`; one of `default`, `modern`, `karaoke`, `modern_karaoke`)
+- `VIDEO_WORKER_SUBTITLE_TEMPLATE` (default: `modern_karaoke`; one of `default`, `modern`, `karaoke`, `modern_karaoke`)
+- `VIDEO_WORKER_TITLE_PROVIDER` (default: `heuristic`; one of `heuristic`, `openai`)
+- `VIDEO_WORKER_OPENAI_API_KEY` (default: empty; required when `TITLE_PROVIDER=openai`)
+- `VIDEO_WORKER_OPENAI_MODEL` (default: `gpt-4.1-mini`)
+- `VIDEO_WORKER_OPENAI_BASE_URL` (default: `https://api.openai.com/v1`)
 - `VIDEO_WORKER_TARGET_FPS` (default: `30`)
 - `VIDEO_WORKER_ENABLE_LOUDNORM` (default: `false`)
 - `VIDEO_WORKER_LOG_LEVEL` (default: `INFO`)
+- `VIDEO_WORKER_METRICS_ENABLED` (default: `true`)
+- `VIDEO_WORKER_SENTRY_DSN` (default: empty)
+- `VIDEO_WORKER_SENTRY_TRACES_SAMPLE_RATE` (default: `0.0`)
 - `VIDEO_WORKER_CALLBACK_MAX_RETRIES` (default: `3`)
 - `VIDEO_WORKER_CALLBACK_RETRY_BACKOFF_SECONDS` (default: `0.5`)
 - `VIDEO_WORKER_DOWNLOAD_MAX_RETRIES` (default: `2`)
@@ -49,7 +57,7 @@ python -m venv .venv
 # Light install (enough for unit tests + API scaffolding)
 pip install -r requirements.txt -r requirements-dev.txt
 
-# Full pipeline (includes Whisper; heavy)
+# Full pipeline (includes Whisper + WhisperX alignment; heavy)
 # pip install -r requirements-ml.txt
 
 # API
@@ -104,6 +112,10 @@ Payload shape:
   "error": null
 }
 ```
+
+Additional artifacts written to disk (not currently included in the callback payload):
+
+- `artifacts/words.json`: word-level timestamps `{word,start,end,confidence}` (WhisperX when available, otherwise heuristic fallback).
 
 ## Integration test plan (curl)
 

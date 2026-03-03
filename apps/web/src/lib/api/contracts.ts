@@ -11,6 +11,14 @@ export type ApiPipelineEvent = {
   created_at: string | null;
 };
 
+export type ApiClipTitleCandidates = {
+  provider: string | null;
+  description: string | null;
+  hashtags: string[];
+  candidates: { title: string; score: number; features?: Record<string, number> | null }[];
+  top3: string[];
+};
+
 export type ApiClip = {
   id: string;
   external_id: string | null;
@@ -21,6 +29,7 @@ export type ApiClip = {
   score: number | null;
   reason: string | null;
   title: string | null;
+  title_candidates?: ApiClipTitleCandidates | null;
 
   // Local/shared-volume paths returned by Laravel.
   // In production these are typically mapped to signed URLs.
@@ -101,6 +110,7 @@ export type ApiClipListItem = {
   score: number | null;
   reason: string | null;
   title: string | null;
+  title_candidates?: ApiClipTitleCandidates | null;
   video_path: string | null;
   subtitles_ass_path: string | null;
   subtitles_srt_path: string | null;
@@ -122,6 +132,7 @@ export type ApiClipDetail = {
   score: number | null;
   reason: string | null;
   title: string | null;
+  title_candidates?: ApiClipTitleCandidates | null;
   video_path: string | null;
   subtitles_ass_path: string | null;
   subtitles_srt_path: string | null;

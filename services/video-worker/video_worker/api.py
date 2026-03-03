@@ -12,6 +12,15 @@ from .models import JobCreateRequest, JobCreateResponse
 from .redis_conn import get_redis
 from .rq_queue import get_queue
 
+try:
+    from .observability import configure_metrics, configure_sentry
+except ModuleNotFoundError:
+    def configure_sentry(*, dsn: str, traces_sample_rate: float = 0.0) -> None:
+        return
+
+    def configure_metrics(*, app: FastAPI) -> None:
+        return
+
 
 def create_app() -> FastAPI:
     settings = get_settings()
@@ -19,7 +28,15 @@ def create_app() -> FastAPI:
 
     logger = get_logger(service="video-worker-api")
 
+    configure_sentry(
+        dsn=getattr(settings, "sentry_dsn", ""),
+        traces_sample_rate=getattr(settings, "sentry_traces_sample_rate", 0.0),
+    )
+
     app = FastAPI(title="video-worker")
+
+    if getattr(settings, "metrics_enabled", False):
+        configure_metrics(app=app)
 
     @app.get("/health")
     def health() -> dict:
@@ -38,8 +55,8 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=401, detail="unauthorized")
 
         if settings.callback_host_allowlist:
-            allowed = {h.strip() for h in settings.callback_host_allowlist.split(',') if h.strip()}
-            host = getattr(req.callback_url, 'host', None)
+            allowed = {h.strip() for h in settings.callback_host_allowlist.split(",") if h.strip()}
+            host = getattr(req.callback_url, "host", None)
             if not host or host not in allowed:
                 raise HTTPException(status_code=400, detail=f"callback_host_not_allowed: {host}")
 

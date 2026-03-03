@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
-import { NextIntlClientProvider } from 'next-intl';
 
 import '../globals.css';
 import { getMessages } from '../../i18n/getMessages';
+import { IntlProvider } from '../../i18n/IntlProvider';
 import { isLocale, type AppLocale } from '../../i18n/locales';
 import { AppShell } from '@/ui/shell/AppShell';
 import { PageTransition } from '@/ui/shell/PageTransition';
@@ -40,11 +40,11 @@ export default async function RootLayout({
       </head>
       <body>
         <ThemeProvider>
-          <NextIntlClientProvider locale={locale} messages={messages}>
+          <IntlProvider locale={locale} messages={messages}>
             <AppShell>
               <PageTransition>{children}</PageTransition>
             </AppShell>
-          </NextIntlClientProvider>
+          </IntlProvider>
         </ThemeProvider>
       </body>
     </html>

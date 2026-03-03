@@ -16,7 +16,10 @@ import {
 } from "@/ui/primitives/Card";
 import { Progress } from "@/ui/primitives/Progress";
 import { Skeleton } from "@/ui/primitives/skeleton";
+import { CopyButton } from "@/ui/shell/CopyButton";
 import { PageHeader } from "@/ui/shell/PageHeader";
+
+import { DeleteClipButton } from "./ui/DeleteClipButton";
 
 export default async function ClipDetailsPage({
   params,
@@ -66,6 +69,12 @@ export default async function ClipDetailsPage({
             <Button variant="primary" disabled={!clip.video_path}>
               {t("actions.download")}
             </Button>
+            <DeleteClipButton
+              clipId={id}
+              redirectHref={
+                clip.project ? `/${locale}/projects/${clip.project.id}` : `/${locale}/clips`
+              }
+            />
           </>
         }
       />
@@ -127,6 +136,78 @@ export default async function ClipDetailsPage({
                   }
                 />
                 <MetaRow label={t("meta.format")} value="mp4" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("titles.title")}</CardTitle>
+              <CardDescription>{t("titles.subtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3">
+                <div className="rounded-lg border border-[color:var(--border)] bg-[var(--surface-muted)] p-3">
+                  <div className="text-xs font-medium text-[var(--text-muted)]">
+                    {t("titles.suggested")}
+                  </div>
+                  <div className="mt-2 flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 text-sm font-semibold text-[var(--text)]">
+                      {clip.title ?? "—"}
+                    </div>
+                    {clip.title ? (
+                      <CopyButton
+                        text={clip.title}
+                        label={t("titles.copy")}
+                        copiedLabel={t("titles.copied")}
+                      />
+                    ) : null}
+                  </div>
+                  {clip.title_candidates?.description ? (
+                    <div className="mt-2 text-xs text-[var(--text-muted)]">
+                      {clip.title_candidates.description}
+                    </div>
+                  ) : null}
+                  {clip.title_candidates?.hashtags?.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {clip.title_candidates.hashtags.map((h) => (
+                        <span
+                          key={h}
+                          className="rounded-md border border-[color:var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-muted)]"
+                        >
+                          {h}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                {clip.title_candidates?.candidates?.length ? (
+                  <div className="grid gap-2">
+                    {clip.title_candidates.candidates.slice(0, 8).map((c, idx) => (
+                      <div
+                        key={`${idx}-${c.title}`}
+                        className="flex items-start justify-between gap-3 rounded-lg border border-[color:var(--border)] bg-[var(--surface)] p-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-[var(--text)]">
+                            {c.title}
+                          </div>
+                          <div className="mt-1 text-xs text-[var(--text-muted)]">
+                            {t("titles.score", { value: Math.round(c.score * 100) })}
+                          </div>
+                        </div>
+                        <CopyButton
+                          text={c.title}
+                          label={t("titles.copy")}
+                          copiedLabel={t("titles.copied")}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-[var(--text-muted)]">{t("titles.empty")}</div>
+                )}
               </div>
             </CardContent>
           </Card>
