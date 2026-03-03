@@ -23,7 +23,9 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # Restrict direct access to the Next.js server to localhost only.
+      # Public traffic should go through Caddy on 80/443.
+      - "127.0.0.1:3000:3000"
     environment:
       # Next server calls Laravel over the Docker network.
       LARAVEL_BASE_URL: http://backend:8000

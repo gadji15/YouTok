@@ -43,18 +43,19 @@ Identifiants admin (définis dans `.env`):
 - email: `ADMIN_EMAILS`
 - password: `ADMIN_PASSWORD`
 
-### (Optionnel) BasicAuth Caddy
+### BasicAuth Caddy
 
 Recommandé si l'app est "interne" (V1).
 
 1) Générez un hash de mot de passe:
 
 ```bash
-docker run --rm caddy:2-alpine caddy hash-password --plaintext 'your-password'
+docker run --rm caddy:2-alpine caddy hash-password --plaintext "your-password"
 ```
 
 2) Renseignez `BASIC_AUTH_USER` et `BASIC_AUTH_HASH` dans `.env`
-3) Décommentez le bloc `basicauth` dans `Caddyfile`
+
+Note: le hash contient des caractères "dollar"; dans un fichier `.env` lu par Docker Compose, il faut les échapper (souvent en les doublant) sinon Compose tente de substituer des variables.
 
 ### Activer le video-worker
 
