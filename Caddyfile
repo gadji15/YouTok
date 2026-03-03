@@ -1,5 +1,7 @@
 {
-  email {$ACME_EMAIL}
+  # Optional: contact email used for ACME registration.
+  # If you leave ACME_EMAIL empty (e.g. local HTTP mode), keep this commented.
+  # email {$ACME_EMAIL}
 }
 
 {$DOMAIN} {
