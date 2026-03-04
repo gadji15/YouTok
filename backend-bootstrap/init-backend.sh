@@ -189,6 +189,25 @@ if ! grep -q "^APP_KEY=" .env || [ "$(grep -E "^APP_KEY=" .env | head -n 1 | cut
   normalize_app_key
 fi
 
+# Ensure tests have an APP_KEY too (php artisan test loads .env.testing if present).
+# Keep it in sync with .env to avoid MissingAppKeyException.
+if [ -f .env ]; then
+  APP_KEY_VAL="$(grep -E '^APP_KEY=' .env | tail -n 1 | cut -d= -f2-)"
+  if [ ! -f .env.testing ]; then
+    cp .env .env.testing
+  fi
+  upsert_env_kv APP_ENV "testing" .env.testing
+  upsert_env_kv APP_DEBUG "true" .env.testing
+  upsert_env_kv APP_KEY "${APP_KEY_VAL}" .env.testing
+  upsert_env_kv DB_CONNECTION "${DB_CONNECTION_EFFECTIVE:-mysql}" .env.testing
+  upsert_env_kv DB_HOST "${DB_HOST_EFFECTIVE:-db}" .env.testing
+  upsert_env_kv DB_PORT "${DB_PORT_EFFECTIVE:-3306}" .env.testing
+  upsert_env_kv DB_DATABASE "${DB_DATABASE_EFFECTIVE:-backend}" .env.testing
+  upsert_env_kv DB_USERNAME "${DB_USERNAME_EFFECTIVE:-backend}" .env.testing
+  upsert_env_kv DB_PASSWORD "${DB_PASSWORD_EFFECTIVE:-backend}" .env.testing
+  fix_env_perms
+fi
+
 # Install Breeze (Blade) once
 if [ ! -f routes/auth.php ]; then
   echo "[backend_init] installing Laravel Breeze (Blade)" >&2
