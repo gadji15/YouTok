@@ -262,10 +262,14 @@ def choose_subtitle_placement(
         y0_rel = y0 / play_res_y
         y1_rel = y1 / play_res_y
 
+        # Assume subtitles span most of the width but keep safe margins.
+        sub_x0 = 0.08
+        sub_x1 = 0.92
+
         worst = 0.0
         for xmin, ymin, xmax, ymax in face_bboxes:
             inter_y = max(0.0, min(y1_rel, ymax) - max(y0_rel, ymin))
-            inter_x = max(0.0, min(0.75, xmax) - max(0.25, xmin))
+            inter_x = max(0.0, min(sub_x1, xmax) - max(sub_x0, xmin))
             inter = inter_x * inter_y
             area = max(1e-6, (xmax - xmin) * (ymax - ymin))
             worst = max(worst, inter / area)

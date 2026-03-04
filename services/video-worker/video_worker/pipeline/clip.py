@@ -67,6 +67,47 @@ def _estimate_best_center_x_rel(
     )
 
 
+def _ema_smooth(values: list[float], alpha: float) -> list[float]:
+    if not values:
+        return []
+    alpha = _clamp(alpha, 0.0, 1.0)
+
+    out = [float(values[0])]
+    for v in values[1:]:
+        out.append(alpha * float(v) + (1.0 - alpha) * out[-1])
+    return out
+
+
+def _build_piecewise_linear_x_expr(*, t_points: list[float], x_points: list[int]) -> str:
+    """Build an ffmpeg expression for piecewise-linear x(t).
+
+    - t is in seconds (ffmpeg variable).
+    - Returns an expression string usable inside crop x='...'.
+
+    We deliberately keep this expression simple and bounded in size.
+    """
+
+    assert len(t_points) == len(x_points)
+    if len(t_points) == 1:
+        return str(int(x_points[0]))
+
+    expr = str(int(x_points[-1]))
+
+    # Build nested if(between(t,ti,tj), segment_expr, fallback)
+    for i in range(len(t_points) - 2, -1, -1):
+        t0 = float(t_points[i])
+        t1 = float(t_points[i + 1])
+        x0 = int(x_points[i])
+        x1 = int(x_points[i + 1])
+
+        dt = max(0.001, t1 - t0)
+        seg = f"{x0}+({x1}-{x0})*(t-{t0})/{dt}"
+
+        expr = f"if(between(t,{t0},{t1}),{seg},{expr})"
+
+    return expr
+
+
 def render_clips(
     *,
     source_video: Path,
@@ -323,53 +364,78 @@ def render_clips(
         if duration <= 0:
             continue
 
-        # Dynamic horizontal reframing:
-        # - Prefer face center.
-        # - Fall back to motion center for scenes with no visible person.
-        # - Use a simple pan from start->end when centers differ.
-        win = min(10.0, max(4.0, duration / 8.0))
+        # Dynamic horizontal reframing (subject tracking + smoothing):
+        # - Prefer face center per sampled frame.
+        # - Fall back to motion center when no face is detected.
+        # - Smooth the resulting crop curve to avoid jitter.
+        # - Use a piecewise-linear crop x(t) for better framing than start->end only.
 
-        start_center = _estimate_best_center_x_rel(
-            video_path=source_video,
-            start_seconds=clip.start_seconds,
-            end_seconds=clip.start_seconds + win,
-            work_dir=clip_dir / "track_start",
-        )
-        end_center = _estimate_best_center_x_rel(
-            video_path=source_video,
-            start_seconds=max(clip.start_seconds, clip.end_seconds - win),
-            end_seconds=clip.end_seconds,
-            work_dir=clip_dir / "track_end",
-        )
+        # We'll keep the expression small by using up to 5 knot points.
+        knot_count = 5
+        if duration < 8.0:
+            knot_count = 3
 
-        if start_center is None and end_center is None:
-            start_center = 0.5
-            end_center = 0.5
-        elif start_center is None:
-            start_center = end_center
-        elif end_center is None:
-            end_center = start_center
+        t_points = [i * (duration / max(1, knot_count - 1)) for i in range(knot_count)]
 
-        crop_x0 = _compute_crop_x_pixels(source_video=source_video, center_x_rel=float(start_center))
-        crop_x1 = _compute_crop_x_pixels(source_video=source_video, center_x_rel=float(end_center))
+        crop_x_points: list[int] = []
+        centers_dbg: list[float | None] = []
 
-        # Smoothing: cap pan speed to avoid aggressive reframing when detections are noisy.
-        # This keeps the crop stable (better for retention).
-        max_pan_px_per_sec = 220.0
-        max_delta = int(round(max_pan_px_per_sec * float(duration)))
-        delta = crop_x1 - crop_x0
-        if abs(delta) > max_delta:
-            crop_x1 = crop_x0 + (max_delta if delta > 0 else -max_delta)
-
-        if abs(crop_x1 - crop_x0) < 24:
-            crop_filter = f"crop=1080:1920:x={crop_x0}:y=(ih-1920)/2"
-        else:
-            d = max(0.001, float(duration))
-            crop_filter = (
-                "crop=1080:1920:"
-                + f"x='max(0,min({crop_x0}+({crop_x1}-{crop_x0})*t/{d},iw-1080))'"
-                + ":y=(ih-1920)/2"
+        for i, t_rel in enumerate(t_points):
+            # Small window around the knot (stabilizes detection).
+            w = 3.0 if duration > 20 else 2.0
+            a0 = max(clip.start_seconds, clip.start_seconds + t_rel - w / 2.0)
+            a1 = min(clip.end_seconds, clip.start_seconds + t_rel + w / 2.0)
+            center = _estimate_best_center_x_rel(
+                video_path=source_video,
+                start_seconds=a0,
+                end_seconds=a1,
+                work_dir=clip_dir / f"track_knot_{i}",
             )
+            centers_dbg.append(center)
+            if center is None:
+                center = 0.5
+
+            crop_x_points.append(_compute_crop_x_pixels(source_video=source_video, center_x_rel=float(center)))
+
+        # Smooth crop positions using an exponential moving average.
+        smoothed = [int(round(v)) for v in _ema_smooth([float(x) for x in crop_x_points], alpha=0.55)]
+
+        # Enforce a max pan speed between consecutive knots.
+        max_pan_px_per_sec = 220.0
+        for i in range(1, len(smoothed)):
+            dt = max(0.001, t_points[i] - t_points[i - 1])
+            max_delta = int(round(max_pan_px_per_sec * dt))
+            delta = smoothed[i] - smoothed[i - 1]
+            if abs(delta) > max_delta:
+                smoothed[i] = smoothed[i - 1] + (max_delta if delta > 0 else -max_delta)
+
+        # If still basically static, keep filter simple.
+        if max(smoothed) - min(smoothed) < 24:
+            crop_filter = f"crop=1080:1920:x={smoothed[0]}:y=(ih-1920)/2"
+        else:
+            expr = _build_piecewise_linear_x_expr(t_points=t_points, x_points=smoothed)
+            crop_filter = "crop=1080:1920:" + f"x='max(0,min({expr},iw-1080))'" + ":y=(ih-1920)/2"
+
+        # Persist tracking diagnostics (useful for QA).
+        try:
+            track_path = clip_dir / "track.json"
+            track_path.write_text(
+                json.dumps(
+                    {
+                        "duration": duration,
+                        "t_points": t_points,
+                        "centers_x_rel": centers_dbg,
+                        "crop_x_points": crop_x_points,
+                        "crop_x_points_smoothed": smoothed,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        except Exception:
+            logger.exception("clip.track_write_failed", clip_id=clip.clip_id)
 
         vf_parts = [
             "scale=1080:1920:force_original_aspect_ratio=increase",
