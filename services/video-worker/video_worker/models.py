@@ -15,6 +15,12 @@ class JobCreateRequest(BaseModel):
 
     segmentation_mode: Literal["viral", "chapters"] = "viral"
 
+    # Rendering
+    output_aspect: Literal["vertical", "source"] = "vertical"
+
+    # Originality / transformation (V1: best-effort, may be a no-op)
+    originality_mode: Literal["none", "voiceover"] = "none"
+
     # Overrides. If omitted, the worker falls back to environment defaults.
     subtitles_enabled: bool = True
     subtitle_template: str | None = None

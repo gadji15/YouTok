@@ -64,10 +64,15 @@
       "segmentationLabel": "Segmentation",
       "segmentationViral": "Viral highlights",
       "segmentationChapters": "YouTube chapters (else slices)",
+      "outputAspectLabel": "Format",
+      "outputAspectVertical": "Vertical (9:16)",
+      "outputAspectSource": "Original YouTube (no vertical crop)",
       "clipLengthLabel": "Clip length (sec)",
       "subtitlesLabel": "Subtitles",
       "subtitlesOn": "On",
       "subtitlesOff": "Off",
+      "originalityLabel": "Originality mode",
+      "originalityHint": "Adds a transformation (e.g. voiceover). Does not guarantee copyright safety.",
       "create": "Create project"
     }
   },

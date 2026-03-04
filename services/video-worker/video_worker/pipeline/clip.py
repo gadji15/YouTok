@@ -137,9 +137,12 @@ def render_clips(
     logger: structlog.BoundLogger,
     subtitles_enabled: bool = True,
     subtitle_template: str = "default",
+    output_aspect: str = "vertical",
     target_fps: int = 30,
     enable_loudnorm: bool = False,
     word_timings: list[WordTiming] | None = None,
+    word_timings_by_clip_id: dict[str, list[WordTiming]] | None = None,
+    audio_override_by_clip_id: dict[str, Path] | None = None,
     quality_gate_enabled: bool = False,
     quality_gate_face_overlap_p95_threshold: float = 0.05,
     quality_gate_max_attempts: int = 2,
@@ -198,6 +201,24 @@ def render_clips(
 
     fps = max(1, int(target_fps))
 
+    effective_output_aspect = (output_aspect or "vertical").strip().lower()
+    if effective_output_aspect not in {"vertical", "source"}:
+        effective_output_aspect = "vertical"
+
+    # Vertical (9:16) is the default TikTok-ready output.
+    # "source" keeps the original aspect ratio/resolution (no vertical crop).
+    source_info = probe_video(source_video)
+
+    if effective_output_aspect == "source":
+        play_res_x = int(source_info.width)
+        play_res_y = int(source_info.height)
+        effective_ui_safe_ymin = 1.0
+    else:
+        play_res_x = 1080
+        play_res_y = 1920
+        effective_ui_safe_ymin = ui_safe_ymin
+
+    # Vertical (9:16) is the default TikTok-ready output
     for clip in clips:
         clip_dir = output_dir / clip.clip_id
         clip_dir.mkdir(parents=True, exist_ok=True)
@@ -205,6 +226,18 @@ def render_clips(
         out_video = clip_dir / "video.mp4"
         out_srt = clip_dir / "subtitles.srt"
         out_ass = clip_dir / "subtitles.ass"
+
+        clip_word_timings = (
+            word_timings_by_clip_id.get(clip.clip_id)
+            if word_timings_by_clip_id is not None and clip.clip_id in word_timings_by_clip_id
+            else word_timings
+        )
+
+        clip_audio_override = (
+            audio_override_by_clip_id.get(clip.clip_id)
+            if audio_override_by_clip_id is not None and clip.clip_id in audio_override_by_clip_id
+            else None
+        )
 
         write_srt_for_clip(
             clip_start_seconds=clip.start_seconds,
@@ -222,90 +255,96 @@ def render_clips(
                     source_video=source_video,
                     clip_start_seconds=clip.start_seconds,
                     clip_end_seconds=clip.end_seconds,
-                    play_res_x=1080,
-                    play_res_y=1920,
+                    play_res_x=play_res_x,
+                    play_res_y=play_res_y,
                     work_dir=clip_dir / "subtitle_placement",
                     logger=logger.bind(clip_id=clip.clip_id),
-                    ui_safe_ymin=ui_safe_ymin,
+                    ui_safe_ymin=effective_ui_safe_ymin,
                 )
             except TypeError:
                 placement = choose_subtitle_placement(
                     source_video=source_video,
                     clip_start_seconds=clip.start_seconds,
                     clip_end_seconds=clip.end_seconds,
-                    play_res_x=1080,
-                    play_res_y=1920,
+                    play_res_x=play_res_x,
+                    play_res_y=play_res_y,
                     work_dir=clip_dir / "subtitle_placement",
                     logger=logger.bind(clip_id=clip.clip_id),
                 )
 
         # Attempt to produce word-level timings and an ASS via the bundled tools.
         # NOTE: This runs inside the worker image where the package lives at /app/video_worker.
-        try:
-            tools_dir = Path(__file__).resolve().parents[1] / "tools"
+        # If clip audio is overridden (voiceover mode), skip this step (it would align against
+        # the original source audio and produce incorrect subtitles).
+        if clip_audio_override is None:
+            try:
+                tools_dir = Path(__file__).resolve().parents[1] / "tools"
 
-            audio_wav = clip_dir / "audio.wav"
-            words_json = clip_dir / "words.json"
+                audio_wav = clip_dir / "audio.wav"
+                words_json = clip_dir / "words.json"
 
-            # extract clip audio for alignment
-            ff_args = [
-                "ffmpeg",
-                "-y",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-ss",
-                str(clip.start_seconds),
-                "-i",
-                str(source_video),
-                "-t",
-                str(max(0.01, clip.end_seconds - clip.start_seconds)),
-                "-vn",
-                "-ac",
-                "1",
-                "-ar",
-                "16000",
-                str(audio_wav),
-            ]
-            run(ff_args, logger=logger.bind(clip_id=clip.clip_id))
-
-            # run whisperx_align.py (best-effort)
-            wxa = tools_dir / "whisperx_align.py"
-            if wxa.exists():
-                run(["python3", str(wxa), "--wav", str(audio_wav), "--out", str(words_json)], logger=logger.bind(clip_id=clip.clip_id))
-
-            # If words.json produced, call make_ass to create an ASS file
-            mak = tools_dir / "make_ass.py"
-            if words_json.exists() and mak.exists():
-                cmd = [
-                    "python3",
-                    str(mak),
-                    "--words",
-                    str(words_json),
-                    "--out",
-                    str(out_ass),
-                    "--video",
+                # extract clip audio for alignment
+                ff_args = [
+                    "ffmpeg",
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-ss",
+                    str(clip.start_seconds),
+                    "-i",
                     str(source_video),
-                    "--template",
-                    str(subtitle_template),
-                    "--ui-safe-ymin",
-                    str(ui_safe_ymin),
+                    "-t",
+                    str(max(0.01, clip.end_seconds - clip.start_seconds)),
+                    "-vn",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    str(audio_wav),
                 ]
+                run(ff_args, logger=logger.bind(clip_id=clip.clip_id))
 
-                if placement is not None:
-                    cmd += [
-                        "--an",
-                        str(placement.alignment),
-                        "--x",
-                        str(placement.x),
-                        "--y",
-                        str(placement.y),
+                # run whisperx_align.py (best-effort)
+                wxa = tools_dir / "whisperx_align.py"
+                if wxa.exists():
+                    run(
+                        ["python3", str(wxa), "--wav", str(audio_wav), "--out", str(words_json)],
+                        logger=logger.bind(clip_id=clip.clip_id),
+                    )
+
+                # If words.json produced, call make_ass to create an ASS file
+                mak = tools_dir / "make_ass.py"
+                if words_json.exists() and mak.exists():
+                    cmd = [
+                        "python3",
+                        str(mak),
+                        "--words",
+                        str(words_json),
+                        "--out",
+                        str(out_ass),
+                        "--video",
+                        str(source_video),
+                        "--template",
+                        str(subtitle_template),
+                        "--ui-safe-ymin",
+                        str(ui_safe_ymin),
                     ]
 
-                run(cmd, logger=logger.bind(clip_id=clip.clip_id))
-                tool_ass_generated = out_ass.exists() and out_ass.stat().st_size > 0
-        except Exception:
-            logger.exception("external_ass_generation_failed", clip_id=clip.clip_id)
+                    if placement is not None:
+                        cmd += [
+                            "--an",
+                            str(placement.alignment),
+                            "--x",
+                            str(placement.x),
+                            "--y",
+                            str(placement.y),
+                        ]
+
+                    run(cmd, logger=logger.bind(clip_id=clip.clip_id))
+                    tool_ass_generated = out_ass.exists() and out_ass.stat().st_size > 0
+            except Exception:
+                logger.exception("external_ass_generation_failed", clip_id=clip.clip_id)
 
         clip_segments = [
             s
@@ -319,13 +358,15 @@ def render_clips(
             # Prefer true word timings (WhisperX or heuristic approximation from the full transcript).
             if tool_ass_generated:
                 used_source = "word_timings_tools"
-            elif placement is not None and word_timings and len(word_timings) > 0:
+            elif placement is not None and clip_word_timings and len(clip_word_timings) > 0:
                 write_word_level_ass_for_clip(
                     clip_start_seconds=clip.start_seconds,
                     clip_end_seconds=clip.end_seconds,
-                    words=word_timings,
+                    words=clip_word_timings,
                     output_path=out_ass,
                     placement=(placement.alignment, placement.x, placement.y),
+                    play_res_x=play_res_x,
+                    play_res_y=play_res_y,
                     template=subtitle_template,
                 )
                 used_source = "word_timings"
@@ -343,6 +384,8 @@ def render_clips(
                         words=approx,
                         output_path=out_ass,
                         placement=(placement.alignment, placement.x, placement.y),
+                        play_res_x=play_res_x,
+                        play_res_y=play_res_y,
                         template=subtitle_template,
                     )
                     used_source = "approximate"
@@ -404,6 +447,8 @@ def render_clips(
                         words=approx,
                         output_path=out_ass,
                         placement=(placement.alignment, placement.x, placement.y),
+                        play_res_x=play_res_x,
+                        play_res_y=play_res_y,
                         template=subtitle_template,
                     )
                     _best_effort_log_ass_stats(
@@ -513,62 +558,87 @@ def render_clips(
         if subtitles_enabled:
             vf_parts.append(f"ass={_ffmpeg_filter_escape_path(out_ass)}")
 
-        ffmpeg_args_base: list[str] = [
-            "ffmpeg",
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-ss",
-            str(clip.start_seconds),
-            "-i",
-            str(source_video),
-            "-t",
-            str(duration),
-        ]
-
-        if enable_loudnorm:
-            ffmpeg_args_base += [
-                "-af",
-                "loudnorm=I=-16:TP=-1.5:LRA=11",
-            ]
-
         # TikTok-friendly encode settings:
         # - Constant frame rate (CFR)
         # - Regular keyframes every ~2 seconds (helps TikTok transcode more cleanly)
         # - Keep bitrate reasonable to avoid extra aggressive recompression
         gop = int(max(1, fps * 2))
 
-        ffmpeg_args_base += [
-            "-vsync",
-            "cfr",
-            "-r",
-            str(fps),
-            "-c:v",
-            "libx264",
-            "-profile:v",
-            "high",
-            "-pix_fmt",
-            "yuv420p",
-            "-preset",
-            "veryfast",
-            "-crf",
-            "18",
-            "-maxrate",
-            "12M",
-            "-bufsize",
-            "20M",
-            "-x264-params",
-            f"keyint={gop}:min-keyint={gop}:scenecut=0",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-ar",
-            "48000",
-            "-movflags",
-            "+faststart",
-        ]
+        def _build_ffmpeg_args(*, vf: str) -> list[str]:
+            ffmpeg_args: list[str] = [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                str(clip.start_seconds),
+                "-i",
+                str(source_video),
+                "-t",
+                str(duration),
+            ]
+
+            if clip_audio_override is not None:
+                ffmpeg_args += [
+                    "-i",
+                    str(clip_audio_override),
+                ]
+
+                audio_chain = f"[1:a]atrim=0:{duration},asetpts=PTS-STARTPTS,apad=pad_dur={duration}"
+                if enable_loudnorm:
+                    audio_chain += ",loudnorm=I=-16:TP=-1.5:LRA=11"
+                audio_chain += "[a]"
+
+                ffmpeg_args += [
+                    "-filter_complex",
+                    audio_chain,
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "[a]",
+                ]
+            elif enable_loudnorm:
+                ffmpeg_args += [
+                    "-af",
+                    "loudnorm=I=-16:TP=-1.5:LRA=11",
+                ]
+
+            ffmpeg_args += [
+                "-vsync",
+                "cfr",
+                "-r",
+                str(fps),
+                "-c:v",
+                "libx264",
+                "-profile:v",
+                "high",
+                "-pix_fmt",
+                "yuv420p",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "18",
+                "-maxrate",
+                "12M",
+                "-bufsize",
+                "20M",
+                "-x264-params",
+                f"keyint={gop}:min-keyint={gop}:scenecut=0",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-ar",
+                "48000",
+                "-movflags",
+                "+faststart",
+                "-vf",
+                vf,
+                str(out_video),
+            ]
+
+            return ffmpeg_args
 
         # Quality gate rerender loop: if subtitles overlap faces/UI on the final video,
         # regenerate the ASS with an alternative placement and re-render.
@@ -591,11 +661,11 @@ def render_clips(
 
         def _write_ass_for_attempt(pl: tuple[int, int, int]) -> None:
             # If we have a word-level ASS generator available, prefer it (precise placement).
-            if word_timings and len(word_timings) > 0:
+            if clip_word_timings and len(clip_word_timings) > 0:
                 write_word_level_ass_for_clip(
                     clip_start_seconds=clip.start_seconds,
                     clip_end_seconds=clip.end_seconds,
-                    words=word_timings,
+                    words=clip_word_timings,
                     output_path=out_ass,
                     placement=pl,
                     template=subtitle_template,
@@ -628,7 +698,7 @@ def render_clips(
         # Always render at least once.
         if not attempt_placements:
             vf_once = list(vf_parts)
-            ffmpeg_args = ffmpeg_args_base + ["-vf", ",".join(vf_once), str(out_video)]
+            ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once))
             run(ffmpeg_args, logger=logger.bind(clip_id=clip.clip_id, attempt=1))
         else:
             ok = False
@@ -649,11 +719,7 @@ def render_clips(
                 if subtitles_enabled:
                     vf_once.append(f"ass={_ffmpeg_filter_escape_path(out_ass)}")
 
-                ffmpeg_args = ffmpeg_args_base + [
-                    "-vf",
-                    ",".join(vf_once),
-                    str(out_video),
-                ]
+                ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once))
 
                 run(ffmpeg_args, logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx))
 

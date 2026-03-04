@@ -43,6 +43,8 @@ class VideoWorkerClient
                 'clip_max_seconds' => (int) ($project->clip_max_seconds ?? 180),
                 'subtitle_template' => $project->subtitle_template,
                 'segmentation_mode' => $project->segmentation_mode ?? 'viral',
+                'originality_mode' => $project->originality_mode ?? 'none',
+                'output_aspect' => $project->output_aspect ?? 'vertical',
             ],
         );
 

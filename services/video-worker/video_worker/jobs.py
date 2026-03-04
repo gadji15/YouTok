@@ -12,6 +12,7 @@ from .logging import get_logger
 from .pipeline.audio import extract_audio_wav
 from .pipeline.chapters import build_chapter_clips, build_sequential_clips, get_youtube_chapters
 from .pipeline.clip import render_clips
+from .pipeline.voiceover import build_voiceover_overrides
 from .pipeline.context import JobContext
 from .pipeline.download import download_youtube_video
 from .pipeline.segment import segment_candidates, write_clips_json
@@ -98,11 +99,25 @@ def process_job(
     clip_min_seconds: float | None = None,
     clip_max_seconds: float | None = None,
     max_clips: int | None = None,
+    originality_mode: str | None = None,
+    output_aspect: str | None = None,
 ) -> dict:
     settings = get_settings()
     logger = get_logger(service="video-worker", job_id=job_id, project_id=project_id)
 
     effective_segmentation_mode = (segmentation_mode or "viral").strip().lower()
+    effective_originality_mode = (originality_mode or "none").strip().lower()
+    effective_output_aspect = (output_aspect or "vertical").strip().lower()
+
+    if effective_output_aspect not in {"vertical", "source"}:
+        effective_output_aspect = "vertical"
+
+    if effective_originality_mode not in {"none", "voiceover"}:
+        effective_originality_mode = "none"
+
+    if effective_originality_mode == "voiceover" and not settings.openai_api_key:
+        logger.warning("voiceover.disabled_missing_openai_key")
+        effective_originality_mode = "none"
 
     effective_min_seconds = settings.clip_min_seconds if clip_min_seconds is None else float(clip_min_seconds)
     effective_max_seconds = settings.clip_max_seconds if clip_max_seconds is None else float(clip_max_seconds)
@@ -369,6 +384,45 @@ def process_job(
 
         current_stage = "render_clips"
         current_progress = 90
+
+        render_segments = segments
+        render_word_timings = words
+        render_word_timings_by_clip_id = None
+        render_audio_override_by_clip_id = None
+
+        if effective_originality_mode == "voiceover":
+            _best_effort_progress_callback(
+                ctx=ctx,
+                stage=current_stage,
+                progress_percent=88,
+                message="Generating voice-over",
+                timeout_seconds=settings.callback_timeout_seconds,
+                max_retries=settings.callback_max_retries,
+                retry_backoff_seconds=settings.callback_retry_backoff_seconds,
+                logger=logger,
+            )
+
+            render_segments, render_word_timings_by_clip_id, render_audio_override_by_clip_id = build_voiceover_overrides(
+                clips=clips,
+                transcript_segments=segments,
+                language=language,
+                openai_api_key=settings.openai_api_key,
+                openai_model=settings.openai_model,
+                openai_base_url=settings.openai_base_url,
+                tts_model=settings.tts_model,
+                tts_voice=settings.tts_voice,
+                tts_instructions=settings.tts_instructions,
+                whisper_model=settings.whisper_model,
+                whisper_device=settings.whisper_device,
+                whisper_temperature=settings.whisper_temperature,
+                whisper_beam_size=settings.whisper_beam_size,
+                whisper_best_of=settings.whisper_best_of,
+                clips_dir=ctx.clips_dir,
+                logger=logger,
+            )
+
+            render_word_timings = None
+
         _best_effort_progress_callback(
             ctx=ctx,
             stage=current_stage,
@@ -379,6 +433,7 @@ def process_job(
             retry_backoff_seconds=settings.callback_retry_backoff_seconds,
             logger=logger,
         )
+
         rendered = render_clips(
             source_video=ctx.source_video_path,
             transcript_segments=segments,
@@ -387,6 +442,7 @@ def process_job(
             logger=logger,
             subtitles_enabled=effective_subtitles_enabled,
             subtitle_template=effective_subtitle_template,
+            output_aspect=effective_output_aspect,
             target_fps=settings.target_fps,
             enable_loudnorm=settings.enable_loudnorm,
             word_timings=words,

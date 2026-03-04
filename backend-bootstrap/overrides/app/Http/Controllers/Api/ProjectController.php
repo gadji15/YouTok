@@ -57,16 +57,15 @@ class ProjectController
             'language' => ['sometimes', 'nullable', 'in:fr,en'],
             'subtitles_enabled' => ['sometimes', 'boolean'],
             'clip_min_seconds' => ['sometimes', 'integer', 'min:60', 'max:180'],
-            'clip_max_seconds' => ['sometimes', 'integer', 'min:60', 'max:180'],
+            'clip_max_seconds' => ['sometimes', 'integer', 'min:60', 'max:180', 'gte:clip_min_seconds'],
             'subtitle_template' => ['sometimes', 'nullable', 'string', 'max:32'],
             'segmentation_mode' => ['sometimes', 'nullable', 'in:viral,chapters'],
+            'originality_mode' => ['sometimes', 'nullable', 'in:none,voiceover'],
+            'output_aspect' => ['sometimes', 'nullable', 'in:vertical,source'],
         ]);
 
-        $clipMin = (int) ($data['clip_min_seconds'] ?? 60);
-        $clipMax = (int) ($data['clip_max_seconds'] ?? 180);
-        if ($clipMin > $clipMax) {
-            [$clipMin, $clipMax] = [$clipMax, $clipMin];
-        }
+        $clipMin = (int) ($request->input('clip_min_seconds', 60));
+        $clipMax = (int) ($request->input('clip_max_seconds', 180));
 
         // Use request accessors for optional fields to avoid edge cases where
         // validated payload may omit optional keys (e.g. false boolean values).
@@ -79,6 +78,8 @@ class ProjectController
             'clip_max_seconds' => $clipMax,
             'subtitle_template' => $request->input('subtitle_template'),
             'segmentation_mode' => $request->input('segmentation_mode') ?? 'viral',
+            'originality_mode' => $request->input('originality_mode') ?? 'none',
+            'output_aspect' => $request->input('output_aspect') ?? 'vertical',
             'status' => ProjectStatus::queued,
         ]);
 
@@ -87,7 +88,6 @@ class ProjectController
 
         return response()->json([
             'id' => (string) $project->id,
-            'status' => $project->status->value,
         ], 201);
     }
 
@@ -119,6 +119,8 @@ class ProjectController
                 'clip_max_seconds' => (int) $project->clip_max_seconds,
                 'subtitle_template' => $project->subtitle_template,
                 'segmentation_mode' => $project->segmentation_mode ?? 'viral',
+                'originality_mode' => $project->originality_mode ?? 'none',
+                'output_aspect' => $project->output_aspect ?? 'vertical',
             ],
 
             'artifacts' => [
@@ -190,6 +192,12 @@ class ProjectController
             SharedStorage::deleteFile($clip->subtitles_ass_path);
             SharedStorage::deleteFile($clip->subtitles_srt_path);
         }
+
+        $project->delete();
+
+        return response()->noContent();
+    }
+}
 
         $project->delete();
 

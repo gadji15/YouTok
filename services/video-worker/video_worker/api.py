@@ -82,6 +82,8 @@ def create_app() -> FastAPI:
             req.clip_min_seconds,
             req.clip_max_seconds,
             req.max_clips,
+            req.originality_mode,
+            req.output_aspect,
             job_id=job_id,
             result_ttl=settings.rq_result_ttl_seconds,
         )

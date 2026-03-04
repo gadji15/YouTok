@@ -24,6 +24,24 @@
                             <x-input-error class="mt-2" :messages="$errors->get('youtube_url')" />
                         </div>
 
+                        <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-4">
+                            <div>
+                                <div class="text-sm font-medium text-gray-900">Mode originalité</div>
+                                <div class="mt-1 text-sm text-gray-600">Ajoute un voice-over IA et peut remplacer l’audio original (réduit le risque de claims, sans garantie).</div>
+                            </div>
+
+                            <label class="inline-flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    name="originality_enabled"
+                                    value="1"
+                                    {{ old('originality_enabled') ? 'checked' : '' }}
+                                    class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500"
+                                />
+                                <span class="text-sm text-gray-700">Activer</span>
+                            </label>
+                        </div>
+
                         <div class="flex items-center gap-3">
                             <x-primary-button>Create</x-primary-button>
                             <a href="{{ route('projects.index') }}" class="text-sm text-gray-600 hover:text-gray-900">Cancel</a>

@@ -53,11 +53,13 @@ class ProjectController extends Controller
                     }
                 },
             ],
+            'originality_enabled' => ['sometimes', 'boolean'],
         ]);
 
         $project = Project::query()->create([
             'name' => $data['name'],
             'youtube_url' => $data['youtube_url'],
+            'originality_mode' => $request->boolean('originality_enabled') ? 'voiceover' : 'none',
             'status' => ProjectStatus::queued,
         ]);
 

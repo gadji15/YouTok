@@ -102,6 +102,21 @@ class Settings(BaseSettings):
         description="OpenAI API base URL",
     )
 
+    tts_model: str = Field(
+        "gpt-4o-mini-tts",
+        description="OpenAI TTS model used for originality_mode=voiceover",
+    )
+
+    tts_voice: str = Field(
+        "marin",
+        description="OpenAI TTS voice used for originality_mode=voiceover",
+    )
+
+    tts_instructions: str = Field(
+        "Speak clearly, with energetic but natural short-form narration.",
+        description="Prompt instructions sent to the OpenAI speech endpoint",
+    )
+
     target_fps: int = Field(30, ge=1, le=60)
 
     enable_loudnorm: bool = Field(

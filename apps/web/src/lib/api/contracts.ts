@@ -3,6 +3,8 @@ export type ApiClipStatus = 'pending' | 'ready' | 'failed';
 
 export type ApiProjectLanguage = 'fr' | 'en';
 export type ApiProjectSegmentationMode = 'viral' | 'chapters';
+export type ApiProjectOriginalityMode = 'none' | 'voiceover';
+export type ApiProjectOutputAspect = 'vertical' | 'source';
 
 export type ApiPipelineEvent = {
   id: string;
@@ -68,6 +70,8 @@ export type ApiProjectOptions = {
   clip_max_seconds: number;
   subtitle_template: string | null;
   segmentation_mode?: ApiProjectSegmentationMode;
+  originality_mode?: ApiProjectOriginalityMode;
+  output_aspect?: ApiProjectOutputAspect;
 };
 
 export type ApiProjectListItem = {
@@ -114,6 +118,8 @@ export type ApiCreateProjectRequest = {
   clip_max_seconds?: number;
   subtitle_template?: string | null;
   segmentation_mode?: ApiProjectSegmentationMode;
+  originality_mode?: ApiProjectOriginalityMode;
+  output_aspect?: ApiProjectOutputAspect;
 };
 
 export type ApiClipListItem = {

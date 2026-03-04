@@ -18,8 +18,10 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
   const [url, setUrl] = useState('');
   const [language, setLanguage] = useState<'fr' | 'en'>('fr');
   const [segmentationMode, setSegmentationMode] = useState<'viral' | 'chapters'>('viral');
+  const [outputAspect, setOutputAspect] = useState<'vertical' | 'source'>('vertical');
   const [clipLength, setClipLength] = useState('180');
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
+  const [originalityEnabled, setOriginalityEnabled] = useState(false);
 
   const clipMaxSeconds = useMemo(() => {
     const n = Number.parseInt(clipLength, 10);
@@ -58,6 +60,8 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
         clip_max_seconds: clipMaxSeconds,
         subtitle_template: 'modern',
         segmentation_mode: segmentationMode,
+        output_aspect: outputAspect,
+        originality_mode: originalityEnabled ? 'voiceover' : 'none',
       }),
     });
 
@@ -165,6 +169,17 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
           </div>
 
           <div className="grid gap-2">
+            <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.outputAspectLabel')}</label>
+            <Select
+              value={outputAspect}
+              onChange={(e) => setOutputAspect(e.target.value as 'vertical' | 'source')}
+            >
+              <option value="vertical">{t('form.outputAspectVertical')}</option>
+              <option value="source">{t('form.outputAspectSource')}</option>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
             <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.clipLengthLabel')}</label>
             <Input
               inputMode="numeric"
@@ -187,6 +202,25 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
               <option value="on">{t('form.subtitlesOn')}</option>
               <option value="off">{t('form.subtitlesOff')}</option>
             </Select>
+          </div>
+
+          <div className="grid gap-2 sm:col-span-3">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--border)] bg-[var(--surface)] p-3">
+              <div className="min-w-0">
+                <div className="text-xs font-medium text-[var(--text)]">{t('form.originalityLabel')}</div>
+                <div className="mt-1 text-xs text-[var(--text-muted)]">{t('form.originalityHint')}</div>
+              </div>
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  checked={originalityEnabled}
+                  onChange={(e) => setOriginalityEnabled(e.target.checked)}
+                  className="peer sr-only"
+                />
+                <div className="h-6 w-11 rounded-full bg-[color:var(--border)] transition-colors peer-checked:bg-[var(--accent)]" />
+                <div className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-[var(--surface)] shadow-sm transition-transform peer-checked:translate-x-5" />
+              </label>
+            </div>
           </div>
         </div>
       </div>
