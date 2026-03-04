@@ -1,30 +1,22 @@
 #!/usr/bin/env python3
 """make_ass.py
 
-Generate an ASS subtitle file from a `words.json` produced by
-`whisperx_align.py` or similar. This script supports a simple placement
-strategy and can call into the repo's `subtitle_placement` module when
-available to compute a safer `y` placement (avoiding faces).
+Generate an ASS subtitle file from a `words.json` produced by `whisperx_align.py`.
 
-Usage:
-  python make_ass.py --words words.json --out out.ass --video sample.mp4
-
-Output: ASS file written to `--out`.
+Goals:
+- No "\\," noise before punctuation.
+- Keep current font size, but ensure lines never overflow screen edges.
+- Produce 1–2 line subtitles with ASS line breaks (\\N) for a cleaner, more
+  dynamic TikTok look.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import logging
-import math
-import os
-import sys
 from pathlib import Path
-from typing import List, Dict, Tuple
-
-# NOTE: This module is used in production (called from clip.py) and also imported
-# in unit tests. Keep it dependency-free.
-
+from typing import Dict, List, Tuple
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("make_ass")
@@ -40,7 +32,15 @@ def seconds_to_ass_time(s: float) -> str:
     h = int(s // 3600)
     m = int((s % 3600) // 60)
     sec = s % 60
-    return f"{h:d}:{m:02d}:{sec:06.3f}"[:-1]  # ASS wants H:MM:SS.cs (centiseconds) - trim micro
+    # ASS wants H:MM:SS.cs (centiseconds)
+    return f"{h:d}:{m:02d}:{sec:06.3f}"[:-1]
+
+
+def _style_font_size(template: str) -> int:
+    template = (template or "modern_karaoke").lower().strip()
+    if template in {"cinematic", "cinematic_karaoke"}:
+        return 66
+    return 62
 
 
 def make_ass_header(
@@ -53,13 +53,16 @@ def make_ass_header(
 ) -> str:
     template = (template or "modern_karaoke").lower().strip()
 
-    # Match the in-repo ASS templates more closely.
-    # - Larger font for 1080x1920
-    # - Stronger outline for readability
     if template in {"cinematic", "cinematic_karaoke"}:
-        style = f"Style: Default,Noto Sans,66,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,{margin_l},{margin_r},170,1"
+        style = (
+            "Style: Default,Noto Sans,66,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,"
+            f"1,0,0,0,100,100,0,0,1,7,1,2,{margin_l},{margin_r},170,1"
+        )
     else:
-        style = f"Style: Default,Noto Sans,62,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,{margin_l},{margin_r},160,1"
+        style = (
+            "Style: Default,Noto Sans,62,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,"
+            f"1,0,0,0,100,100,0,0,1,6,0,2,{margin_l},{margin_r},160,1"
+        )
 
     header = [
         "[Script Info]",
@@ -116,13 +119,7 @@ def join_tokens(tokens: List[str]) -> str:
 
 
 def group_words_to_lines(words: List[Dict], max_chars: int = 40) -> List[Tuple[str, float, float]]:
-    """Group words into lines/events. Returns list of (text, start, end).
-
-    Simple greedy segmenter: add words until combined length > max_chars then flush.
-
-    Important: end time must be the end of the *last word actually included* in the line.
-    Otherwise consecutive events overlap.
-    """
+    """Group words into events. Returns list of (text, start, end)."""
 
     lines: List[Tuple[str, float, float]] = []
     cur_words: List[str] = []
@@ -130,7 +127,7 @@ def group_words_to_lines(words: List[Dict], max_chars: int = 40) -> List[Tuple[s
     cur_end: float | None = None
 
     for w in words:
-        token = w.get("word", "").strip()
+        token = (w.get("word") or "").strip()
         if token == "":
             continue
 
@@ -140,11 +137,9 @@ def group_words_to_lines(words: List[Dict], max_chars: int = 40) -> List[Tuple[s
         if cur_start is None:
             cur_start = w_start
 
-        # Check if this token would overflow the current line.
         if cur_words:
             candidate = join_tokens(cur_words + [token])
             if len(candidate) > max_chars:
-                # Flush without consuming current token.
                 lines.append((join_tokens(cur_words), float(cur_start), float(cur_end or cur_start)))
                 cur_words = []
                 cur_start = w_start
@@ -159,13 +154,47 @@ def group_words_to_lines(words: List[Dict], max_chars: int = 40) -> List[Tuple[s
     return lines
 
 
-def compute_position_default(
-    *,
-    play_res_x: int,
-    play_res_y: int,
-    ui_safe_ymin: float = 0.78,
-) -> Tuple[int, int]:
-    # bottom-center, but above the UI safe zone.
+def _wrap_ass_text(text: str, *, max_chars: int) -> str:
+    """Wrap to <= 2 lines using ASS line breaks (\\N)."""
+
+    def _break_long_token(tok: str) -> list[str]:
+        if len(tok) <= max_chars:
+            return [tok]
+        return [tok[i : i + max_chars] for i in range(0, len(tok), max_chars)]
+
+    tokens = [t for t in text.split() if t]
+
+    expanded: list[str] = []
+    for t in tokens:
+        expanded.extend(_break_long_token(t))
+
+    out_lines: list[str] = []
+    cur: list[str] = []
+    cur_len = 0
+
+    for tok in expanded:
+        add = len(tok) + (1 if cur else 0)
+        if cur and cur_len + add > max_chars:
+            out_lines.append(" ".join(cur))
+            cur = [tok]
+            cur_len = len(tok)
+        else:
+            cur.append(tok)
+            cur_len += add
+
+    if cur:
+        out_lines.append(" ".join(cur))
+
+    if not out_lines:
+        return ""
+
+    if len(out_lines) > 2:
+        out_lines = [out_lines[0], " ".join(out_lines[1:])]
+
+    return "\\N".join(out_lines)
+
+
+def compute_position_default(*, play_res_x: int, play_res_y: int, ui_safe_ymin: float = 0.78) -> tuple[int, int]:
     x = play_res_x // 2
     safe_y = int(play_res_y * ui_safe_ymin)
     y = max(0, safe_y - int(max(play_res_y * 0.06, 110)))
@@ -183,16 +212,28 @@ def write_ass(
     an: int,
     template: str,
     ui_safe_ymin: float,
-):
+) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
+
+    margin_l = 120
+    margin_r = 120
+
     hdr = make_ass_header(
         play_res_x=play_res_x,
         play_res_y=play_res_y,
+        margin_l=margin_l,
+        margin_r=margin_r,
         template=template,
     )
 
     if x is None or y is None:
         x, y = compute_position_default(play_res_x=play_res_x, play_res_y=play_res_y, ui_safe_ymin=ui_safe_ymin)
+
+    # Dynamic wrap width (no font change):
+    font_size = _style_font_size(template)
+    approx_char_w = max(8.0, font_size * 0.55)
+    safe_width_px = max(200, int(play_res_x - margin_l - margin_r))
+    max_chars = max(18, int(safe_width_px / approx_char_w))
 
     with out.open("w", encoding="utf-8") as fh:
         fh.write(hdr)
@@ -201,25 +242,21 @@ def write_ass(
             start_ts = seconds_to_ass_time(float(start))
             end_ts = seconds_to_ass_time(float(end))
 
-            # escape commas
-            safe_text = text.replace("\n", " ").replace(",", "\\,")
+            safe_text = _wrap_ass_text(text.replace("\n", " "), max_chars=max_chars)
 
-            # Use \an + \pos to place precisely.
-            # Add a small blur to improve readability.
-            ev = (
+            fh.write(
                 f"Dialogue: 0,{start_ts},{end_ts},Default,,0000,0000,0000,,"
                 f"{{\\an{int(an)}\\pos({int(x)},{int(y)})\\blur2}}{safe_text}\n"
             )
-            fh.write(ev)
 
     logger.info("wrote ASS %s with %d events", out, len(lines))
 
 
-def main(argv=None):
+def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Generate ASS from word-level JSON")
     p.add_argument("--words", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
-    p.add_argument("--video", required=False, type=Path)  # kept for backward compatibility
+    p.add_argument("--video", required=False, type=Path)
     p.add_argument("--play-res-x", type=int, default=1080)
     p.add_argument("--play-res-y", type=int, default=1920)
     p.add_argument("--max-chars", type=int, default=44)
@@ -235,11 +272,11 @@ def main(argv=None):
         logger.error("no words in %s", args.words)
         return 2
 
-    lines = group_words_to_lines(words, max_chars=int(args.max_chars))
+    raw_lines = group_words_to_lines(words, max_chars=int(args.max_chars))
 
     write_ass(
         out=args.out,
-        lines=lines,
+        lines=raw_lines,
         play_res_x=int(args.play_res_x),
         play_res_y=int(args.play_res_y),
         x=args.x,
@@ -253,4 +290,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
+

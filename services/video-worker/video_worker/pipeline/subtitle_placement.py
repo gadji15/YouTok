@@ -377,9 +377,13 @@ def choose_subtitle_placement(
     - Otherwise pick among bottom/top/above-mouth and avoid overlapping >10% of face bbox.
     """
 
-    # Keep subtitles higher than the TikTok UI (buttons/captions) which often cover the lower third.
-    bottom_margin = int(max(play_res_y * 0.14, 240))
+    # Keep subtitles higher than the TikTok UI (buttons/captions).
+    # For bottom placement we anchor relative to the UI safe zone, not the absolute bottom.
     top_margin = int(max(play_res_y * 0.08, 120))
+
+    safe_y = int(play_res_y * float(ui_safe_ymin))
+    bottom_anchor_y = safe_y - int(max(play_res_y * 0.06, 110))
+    bottom_anchor_y = max(0, min(play_res_y - 1, bottom_anchor_y))
 
     frames = _extract_frames(
         video_path=source_video,
@@ -412,8 +416,8 @@ def choose_subtitle_placement(
 
     candidates: list[SubtitlePlacement] = []
 
-    # bottom-center
-    candidates.append(SubtitlePlacement(alignment=2, x=play_res_x // 2, y=play_res_y - bottom_margin))
+    # bottom-center (but anchored above UI safe zone)
+    candidates.append(SubtitlePlacement(alignment=2, x=play_res_x // 2, y=bottom_anchor_y))
 
     # top-center
     candidates.append(SubtitlePlacement(alignment=8, x=play_res_x // 2, y=top_margin))
@@ -421,7 +425,8 @@ def choose_subtitle_placement(
     # above-mouth (anchor bottom-center)
     if mouth_ymin is not None:
         y = int(mouth_ymin * play_res_y) - int(max(play_res_y * 0.03, 70))
-        y = max(top_margin + box_h, min(play_res_y - bottom_margin, y))
+        # Keep within safe vertical range.
+        y = max(top_margin + box_h, min(bottom_anchor_y, y))
         candidates.append(SubtitlePlacement(alignment=2, x=play_res_x // 2, y=y))
 
     if not face_bboxes:
@@ -431,7 +436,7 @@ def choose_subtitle_placement(
             return SubtitlePlacement(
                 alignment=2,
                 x=play_res_x // 2,
-                y=play_res_y - bottom_margin - shift,
+                y=max(top_margin + box_h, bottom_anchor_y - shift),
                 face_overlap_ratio=0.0,
                 ui_overlap_ratio=0.0,
                 ui_score=ui_score,
