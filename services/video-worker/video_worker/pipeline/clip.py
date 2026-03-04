@@ -513,7 +513,17 @@ def render_clips(
                 "loudnorm=I=-16:TP=-1.5:LRA=11",
             ]
 
+        # TikTok-friendly encode settings:
+        # - Constant frame rate (CFR)
+        # - Regular keyframes every ~2 seconds (helps TikTok transcode more cleanly)
+        # - Keep bitrate reasonable to avoid extra aggressive recompression
+        gop = int(max(1, fps * 2))
+
         ffmpeg_args_base += [
+            "-vsync",
+            "cfr",
+            "-r",
+            str(fps),
             "-c:v",
             "libx264",
             "-profile:v",
@@ -522,17 +532,20 @@ def render_clips(
             "yuv420p",
             "-preset",
             "veryfast",
-            # Target bitrate-based encode for more predictable TikTok packaging.
-            "-b:v",
-            "10M",
+            "-crf",
+            "18",
             "-maxrate",
             "12M",
             "-bufsize",
             "20M",
+            "-x264-params",
+            f"keyint={gop}:min-keyint={gop}:scenecut=0",
             "-c:a",
             "aac",
             "-b:a",
             "192k",
+            "-ar",
+            "48000",
             "-movflags",
             "+faststart",
         ]

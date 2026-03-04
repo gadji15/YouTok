@@ -3,7 +3,7 @@ from __future__ import annotations
 from video_worker.pipeline.clip import _build_piecewise_linear_x_expr
 
 
-def test_build_piecewise_linear_x_expr_smoke() -> None:
+def test_build_piecewise_linear_x_expr_returns_string() -> None:
     expr = _build_piecewise_linear_x_expr(t_points=[0.0, 5.0, 10.0], x_points=[0, 100, 50])
 
     # Should reference t, include between() guards, and be deterministic.
