@@ -219,8 +219,13 @@ def write_word_level_ass_for_clip(
     max_words_per_line: int = 10,
     max_chars_per_line: int = 42,
 ) -> None:
-    """Generate a word-timed .ass file.
+    r"""Generate a word-timed .ass file.
 
+    Templates:
+    - default|modern|karaoke|modern_karaoke (existing)
+    - cinematic|cinematic_karaoke (new): slightly larger, more contrast, subtle pop-in.
+
+    Notes:
     - Uses per-word timings to split into short, readable subtitle "chunks".
     - Karaoke highlighting is only enabled for templates explicitly ending with "_karaoke"
       (or "karaoke"), and is disabled for RTL scripts (e.g. Arabic) where karaoke is
@@ -243,7 +248,9 @@ def write_word_level_ass_for_clip(
 
         return re.search(r"[\u0590-\u08FF]", t) is not None
 
-    karaoke_enabled = template in {"karaoke", "modern_karaoke"}
+    karaoke_enabled = template in {"karaoke", "modern_karaoke", "cinematic_karaoke"}
+
+    cinematic = template in {"cinematic", "cinematic_karaoke"}
 
     # Styles:
     # - Karaoke: Primary = highlight, Secondary = base
@@ -252,10 +259,15 @@ def write_word_level_ass_for_clip(
         style_line = "Style: Default,Noto Sans,62,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
         if template == "karaoke":
             style_line = "Style: Default,Noto Sans,58,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
+        if template == "cinematic_karaoke":
+            # Larger, higher contrast, slightly stronger shadow.
+            style_line = "Style: Default,Noto Sans,66,&H0000C8FF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
     else:
         style_line = "Style: Default,Noto Sans,62,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
         if template == "default":
             style_line = "Style: Default,Noto Sans,58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
+        if template == "cinematic":
+            style_line = "Style: Default,Noto Sans,66,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
 
     header = "\n".join(
         [
@@ -280,10 +292,21 @@ def write_word_level_ass_for_clip(
         placement = (2, play_res_x // 2, play_res_y - int(max(play_res_y * 0.14, 240)))
 
     an, px, py = placement
-    pos_tag = f"{{\\an{an}\\pos({px},{py})\\blur2}}"
+
+    # Cinematic template: subtle pop-in and slightly stronger blur for a smoother look.
+    if template in {"cinematic", "cinematic_karaoke"}:
+        pos_tag = f"{{\\an{an}\\pos({px},{py})\\blur3\\fad(80,120)}}"
+    else:
+        pos_tag = f"{{\\an{an}\\pos({px},{py})\\blur2}}"
 
     # Select words for the clip and shift times to clip-relative.
     clip_words: list[WordTiming] = []
+
+    def _is_punct_only(t: str) -> bool:
+        import re
+
+        return re.fullmatch(r"[\,\.\!\?\;\:\…\)\]\}\»]+", t) is not None
+
     for w in words:
         if w.end_seconds <= clip_start_seconds:
             continue
@@ -296,6 +319,19 @@ def write_word_level_ass_for_clip(
 
         wt = _clean_text(w.word)
         if not wt:
+            continue
+
+        # WhisperX often emits punctuation as separate "words" (e.g. "," or "?").
+        # If we join with spaces, we get "anti-space" before punctuation.
+        # Merge punctuation tokens into the previous word instead.
+        if _is_punct_only(wt) and clip_words:
+            prev = clip_words[-1]
+            clip_words[-1] = WordTiming(
+                word=prev.word + wt,
+                start_seconds=prev.start_seconds,
+                end_seconds=float(end),
+                confidence=prev.confidence,
+            )
             continue
 
         clip_words.append(
@@ -311,6 +347,159 @@ def write_word_level_ass_for_clip(
 
     if any(_contains_rtl(w.word) for w in clip_words):
         karaoke_enabled = False
+        cinematic = False
+
+    def _norm_for_match(t: str) -> str:
+        import re
+
+        t = t.lower()
+        t = re.sub(r"[^0-9a-zA-Z\u00C0-\u024F]+", "", t)
+        return t
+
+    def _pick_hook_words() -> set[str]:
+        # Best-effort keyword selection for the opening hook.
+        # We keep it deterministic and simple (no ML here).
+        hook_window_seconds = 3.0
+
+        power_words = {
+            # EN
+            "secret",
+            "shocking",
+            "insane",
+            "unbelievable",
+            "truth",
+            "warning",
+            "listen",
+            "imagine",
+            "story",
+            "miracle",
+            # FR
+            "incroyable",
+            "dingue",
+            "vérité",
+            "verite",
+            "attention",
+            "écoute",
+            "ecoute",
+            "histoire",
+            "miracle",
+            # Common transliterations / niche words (kept minimal)
+            "subhanallah",
+            "allah",
+            "quran",
+            "coran",
+            "hadith",
+            "sunnah",
+        }
+
+        stop = {
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "to",
+            "of",
+            "in",
+            "on",
+            "for",
+            "with",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "this",
+            "that",
+            "it",
+            "i",
+            "you",
+            "we",
+            "they",
+            "he",
+            "she",
+            "them",
+            "his",
+            "her",
+            "our",
+            "your",
+            "my",
+            "me",
+            "do",
+            "does",
+            "did",
+            "dont",
+            "not",
+            "no",
+            "oui",
+            "non",
+            "et",
+            "ou",
+            "de",
+            "des",
+            "du",
+            "la",
+            "le",
+            "les",
+            "un",
+            "une",
+            "dans",
+            "sur",
+            "pour",
+            "avec",
+            "est",
+            "sont",
+            "été",
+            "etre",
+            "être",
+            "ce",
+            "cet",
+            "cette",
+            "ça",
+            "ca",
+            "je",
+            "tu",
+            "il",
+            "elle",
+            "nous",
+            "vous",
+            "ils",
+            "elles",
+        }
+
+        scored: dict[str, float] = {}
+        for w in clip_words:
+            if w.start_seconds > hook_window_seconds:
+                break
+
+            raw = _norm_for_match(w.word)
+            if not raw or raw in stop:
+                continue
+
+            score = 0.0
+            if raw in power_words:
+                score += 3.0
+
+            if len(raw) >= 4:
+                score += min(12, len(raw)) / 8.0
+
+            # Prefer earlier
+            score += 1.0 / (0.35 + float(w.start_seconds))
+
+            scored[raw] = max(scored.get(raw, 0.0), score)
+
+        top = sorted(scored.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        return {k for k, _ in top}
+
+    hook_words = _pick_hook_words() if cinematic else set()
+
+    def _is_hook_word(word: str, start_seconds: float) -> bool:
+        if not cinematic:
+            return False
+        if start_seconds > 3.0:
+            return False
+        k = _norm_for_match(word)
+        return bool(k) and k in hook_words
 
     def _split_two_lines(parts: list[str], lens: list[int]) -> tuple[list[str], list[str]]:
         # split text parts into two lines, breaking overlong words if necessary
@@ -370,6 +559,18 @@ def write_word_level_ass_for_clip(
         if end <= start:
             end = start + 0.01
 
+        cinematic = template in {"cinematic", "cinematic_karaoke"}
+
+        highlighted = 0
+        max_highlights_per_event = 3
+
+        def _format_word(*, w: WordTiming, prefix: str = "") -> str:
+            nonlocal highlighted
+            if _is_hook_word(w.word, w.start_seconds) and highlighted < max_highlights_per_event:
+                highlighted += 1
+                return prefix + f"{{\\c&H0033D6FF&\\b1\\bord7}}{w.word}{{\\r}}"
+            return prefix + w.word
+
         if karaoke_enabled:
             dur_cs_total = max(1, int(round((end - start) * 100)))
             raw = [max(1, int(round((w.end_seconds - w.start_seconds) * 100))) for w in chunk]
@@ -383,9 +584,9 @@ def write_word_level_ass_for_clip(
             if drift != 0:
                 scaled[-1] = max(1, scaled[-1] + drift)
 
-            parts = [f"{{\\k{scaled[i]}}}{chunk[i].word}" for i in range(len(chunk))]
+            parts = [_format_word(w=chunk[i], prefix=f"{{\\k{scaled[i]}}}") for i in range(len(chunk))]
         else:
-            parts = [w.word for w in chunk]
+            parts = [_format_word(w=w) for w in chunk]
 
         lens = [len(w.word) for w in chunk]
         line1, line2 = _split_two_lines(parts, lens)
@@ -394,6 +595,11 @@ def write_word_level_ass_for_clip(
             text = " ".join(line1) + "\\N" + " ".join(line2)
         else:
             text = " ".join(line1)
+
+        if cinematic:
+            # Subtle scale-in at the start of each event.
+            # This works well on TikTok without being distracting.
+            text = "{\\t(0,120,\\fscx105\\fscy105)}" + text
 
         return start, end, text
 

@@ -175,6 +175,14 @@ class WorkerCallbackTest extends TestCase
                                 ],
                                 'top3' => ['Un hook viral pour tester', 'Et si tu faisais ça ?'],
                             ],
+                            'quality_summary' => [
+                                'template' => 'cinematic_karaoke',
+                                'ui_safe_ymin' => 0.78,
+                                'final_overlap' => [
+                                    'face_overlap_ratio_p95' => 0.03,
+                                    'ui_overlap_ratio_p95' => 0.0,
+                                ],
+                            ],
                             'video_path' => '/shared/c1.mp4',
                             'subtitles_ass_path' => '/shared/c1.ass',
                             'subtitles_srt_path' => '/shared/c1.srt',
@@ -197,6 +205,9 @@ class WorkerCallbackTest extends TestCase
         $this->assertSame('Un hook viral pour tester', $clip->title);
         $this->assertIsArray($clip->title_candidates);
         $this->assertSame('heuristic', $clip->title_candidates['provider']);
+
+        $this->assertIsArray($clip->quality_summary);
+        $this->assertSame('cinematic_karaoke', $clip->quality_summary['template']);
     }
 
     public function test_worker_callback_does_not_overwrite_progress_after_completion(): void

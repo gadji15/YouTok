@@ -1,0 +1,2 @@
+# Optional deps for S3 artifact uploads (V2 prep)
+boto3>=1.34,<2

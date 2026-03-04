@@ -19,6 +19,19 @@ export type ApiClipTitleCandidates = {
   top3: string[];
 };
 
+export type ApiClipQualitySummary = {
+  template?: string | null;
+  ui_safe_ymin?: number | null;
+  final_overlap?: {
+    measured_on?: string;
+    sample_fps?: number;
+    ui_safe_ymin?: number;
+    face_overlap_ratio_p95?: number;
+    ui_overlap_ratio_p95?: number;
+  } | null;
+  attempts?: unknown[] | null;
+} | null;
+
 export type ApiClip = {
   id: string;
   external_id: string | null;
@@ -30,6 +43,7 @@ export type ApiClip = {
   reason: string | null;
   title: string | null;
   title_candidates?: ApiClipTitleCandidates | null;
+  quality_summary?: ApiClipQualitySummary;
 
   // Local/shared-volume paths returned by Laravel.
   // In production these are typically mapped to signed URLs.
@@ -111,6 +125,7 @@ export type ApiClipListItem = {
   reason: string | null;
   title: string | null;
   title_candidates?: ApiClipTitleCandidates | null;
+  quality_summary?: ApiClipQualitySummary;
   video_path: string | null;
   subtitles_ass_path: string | null;
   subtitles_srt_path: string | null;
@@ -133,6 +148,7 @@ export type ApiClipDetail = {
   reason: string | null;
   title: string | null;
   title_candidates?: ApiClipTitleCandidates | null;
+  quality_summary?: ApiClipQualitySummary | null;
   video_path: string | null;
   subtitles_ass_path: string | null;
   subtitles_srt_path: string | null;

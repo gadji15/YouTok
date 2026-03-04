@@ -28,6 +28,15 @@ class Settings(BaseSettings):
         description="Shared storage path for downloaded sources and generated clips",
     )
 
+    # Optional S3-compatible storage (V2 prep). When configured, artifacts can be uploaded
+    # to object storage in addition to local /shared paths.
+    s3_bucket: str = Field("", description="S3 bucket name for artifact uploads (optional)")
+    s3_prefix: str = Field("hikma", description="Key prefix inside the bucket")
+    s3_region: str = Field("", description="AWS region (optional depending on provider)")
+    s3_endpoint_url: str = Field("", description="Custom S3 endpoint URL (MinIO/Wasabi/etc)")
+    s3_access_key_id: str = Field("", description="S3 access key id")
+    s3_secret_access_key: str = Field("", description="S3 secret access key")
+
     whisper_model: str = Field(
         "base",
         description="Whisper model name (e.g. tiny, base, small, medium)",
@@ -70,7 +79,7 @@ class Settings(BaseSettings):
 
     subtitle_template: str = Field(
         "modern_karaoke",
-        description="Subtitle template: default|modern|karaoke|modern_karaoke",
+        description="Subtitle template: default|modern|karaoke|modern_karaoke|cinematic|cinematic_karaoke",
     )
 
     title_provider: str = Field(
@@ -98,6 +107,35 @@ class Settings(BaseSettings):
     enable_loudnorm: bool = Field(
         False,
         description="If true, apply ffmpeg loudnorm to audio during render",
+    )
+
+    # Quality gate (Sprint 1): auto-correct subtitle placement if it overlaps faces/UI.
+    quality_gate_enabled: bool = Field(
+        False,
+        description="If true, re-render clips when subtitle face overlap exceeds the threshold",
+    )
+
+    quality_gate_face_overlap_p95_threshold: float = Field(
+        0.05,
+        ge=0.0,
+        le=1.0,
+        description="Max allowed p95 face overlap ratio for subtitles (measured on final rendered video)",
+    )
+
+    quality_gate_max_attempts: int = Field(
+        2,
+        ge=1,
+        le=5,
+        description="Max render attempts per clip when quality gate is enabled",
+    )
+
+    # UI safe area calibration (TikTok/Shorts/Reels).
+    # Example: 0.78 means "bottom 22% is considered UI".
+    ui_safe_ymin: float = Field(
+        0.78,
+        ge=0.0,
+        le=1.0,
+        description="Relative Y (0..1) from which the bottom UI zone starts",
     )
 
     callback_timeout_seconds: float = Field(20.0, ge=1)

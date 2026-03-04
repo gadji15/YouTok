@@ -50,8 +50,10 @@ API hardening (optional):
 
 ## Run locally
 
+On Debian/Ubuntu with Python 3.12+, you may see `error: externally-managed-environment` (PEP 668) if you try to `pip install` system-wide. Use a virtualenv.
+
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 . .venv/bin/activate
 
 # Light install (enough for unit tests + API scaffolding)
@@ -67,6 +69,36 @@ uvicorn video_worker.api:app --host 0.0.0.0 --port 8000
 # Worker (separate terminal)
 export VIDEO_WORKER_REDIS_URL=redis://localhost:6379/0
 python -m video_worker.worker
+```
+
+### Run tests
+
+```bash
+. .venv/bin/activate
+python -m pytest -q
+```
+
+### Subtitle/UI tuning
+
+The worker uses a simple "bottom UI zone" model to avoid subtitles overlapping TikTok UI.
+
+- `VIDEO_WORKER_UI_SAFE_YMIN` (default: `0.78`): relative Y (0..1) where the bottom UI zone starts.
+  - `0.78` means the bottom ~22% is considered UI.
+
+Quality gate (optional):
+
+- `VIDEO_WORKER_QUALITY_GATE_ENABLED` (default: `false`)
+- `VIDEO_WORKER_QUALITY_GATE_FACE_OVERLAP_P95_THRESHOLD` (default: `0.05`)
+- `VIDEO_WORKER_QUALITY_GATE_MAX_ATTEMPTS` (default: `2`)
+
+When enabled, each clip can be rendered multiple times with alternative subtitle placements until
+`face_overlap_ratio_p95 <= threshold` (measured on the final rendered video).
+
+If you don't have `venv` support installed, on Debian/Ubuntu you typically need:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3-venv
 ```
 
 ## Job callback payload

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import json
+
 import structlog
 
 from .callback import ClipArtifact, JobArtifacts, JobCallbackPayload, JobStatus, post_callback
@@ -20,7 +22,12 @@ from .pipeline.word_alignment import (
     approximate_words_from_segments,
     write_words_json,
 )
+from .redis_conn import get_redis
 from .utils.errors import format_exception_short
+
+
+class JobCancelledError(RuntimeError):
+    pass
 
 
 def _best_effort_callback(
@@ -116,8 +123,19 @@ def process_job(
 
     ctx.ensure_dirs()
 
+    def raise_if_cancelled() -> None:
+        try:
+            if get_redis().exists(f"video-worker:cancel:{job_id}") == 1:
+                raise JobCancelledError("job cancelled")
+        except JobCancelledError:
+            raise
+        except Exception:
+            return
+
     current_stage = "start"
     current_progress = 0
+
+    raise_if_cancelled()
 
     _best_effort_progress_callback(
         ctx=ctx,
@@ -131,6 +149,8 @@ def process_job(
     )
 
     try:
+        raise_if_cancelled()
+
         current_stage = "download"
         current_progress = 10
         _best_effort_progress_callback(
@@ -151,6 +171,8 @@ def process_job(
             retry_backoff_seconds=settings.download_retry_backoff_seconds,
         )
 
+        raise_if_cancelled()
+
         current_stage = "extract_audio"
         current_progress = 20
         _best_effort_progress_callback(
@@ -168,6 +190,8 @@ def process_job(
             output_wav=ctx.audio_path,
             logger=logger,
         )
+
+        raise_if_cancelled()
 
         current_stage = "transcribe"
         current_progress = 50
@@ -193,6 +217,8 @@ def process_job(
 
         write_transcript_json(segments=segments, output_path=ctx.transcript_json_path)
         write_srt(segments=segments, output_path=ctx.subtitles_srt_path)
+
+        raise_if_cancelled()
 
         current_stage = "align"
         current_progress = 60
@@ -220,6 +246,8 @@ def process_job(
 
         write_words_json(words=words, output_path=ctx.words_json_path)
 
+        raise_if_cancelled()
+
         current_stage = "segment"
         current_progress = 70
         _best_effort_progress_callback(
@@ -243,6 +271,8 @@ def process_job(
             language=language,
         )
 
+        raise_if_cancelled()
+
         current_stage = "titles"
         current_progress = 80
         _best_effort_progress_callback(
@@ -260,6 +290,8 @@ def process_job(
         updated_clips = []
 
         for c in clips:
+            raise_if_cancelled()
+
             res = generate_title_candidates_for_clip(
                 clip=c,
                 segments=segments,
@@ -290,6 +322,8 @@ def process_job(
         clips = updated_clips
         write_clips_json(clips=clips, output_path=ctx.clips_json_path)
 
+        raise_if_cancelled()
+
         current_stage = "render_clips"
         current_progress = 90
         _best_effort_progress_callback(
@@ -313,13 +347,49 @@ def process_job(
             target_fps=settings.target_fps,
             enable_loudnorm=settings.enable_loudnorm,
             word_timings=words,
+            quality_gate_enabled=settings.quality_gate_enabled,
+            quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
+            quality_gate_max_attempts=settings.quality_gate_max_attempts,
+            ui_safe_ymin=settings.ui_safe_ymin,
         )
+
+        def _load_quality_summary(video_path: str | None) -> dict | None:
+            if not video_path:
+                return None
+
+            try:
+                metrics_path = Path(video_path).parent / "metrics.json"
+                if not metrics_path.exists():
+                    return None
+
+                raw = json.loads(metrics_path.read_text(encoding="utf-8"))
+                subs = raw.get("subtitles") or {}
+
+                final_overlap = subs.get("final_overlap")
+                attempts = subs.get("render_attempts")
+
+                return {
+                    "template": subs.get("template"),
+                    "ui_safe_ymin": subs.get("ui_safe_ymin"),
+                    "final_overlap": final_overlap,
+                    "attempts": attempts,
+                }
+            except Exception:
+                logger.exception("clip.quality_summary_read_failed")
+                return None
 
         clip_artifacts: list[ClipArtifact] = []
         for c in rendered:
+            raise_if_cancelled()
+
             clip_id = str(c.get("clip_id") or "")
             if clip_id and clip_id in title_candidates_by_clip_id:
                 c = {**c, "title_candidates": title_candidates_by_clip_id[clip_id]}
+
+            q = _load_quality_summary(c.get("video_path"))
+            if q is not None:
+                c = {**c, "quality_summary": q}
+
             clip_artifacts.append(ClipArtifact(**c))
 
         artifacts = JobArtifacts(
@@ -341,9 +411,8 @@ def process_job(
             artifacts=artifacts,
         )
 
-        post_callback(
-            callback_url=ctx.callback_url,
-            callback_secret=ctx.callback_secret,
+        _best_effort_callback(
+            ctx=ctx,
             payload=completed_payload,
             timeout_seconds=settings.callback_timeout_seconds,
             max_retries=settings.callback_max_retries,
@@ -353,6 +422,29 @@ def process_job(
 
         logger.info("job.completed", clip_count=len(rendered))
         return completed_payload.model_dump(mode="json")
+    except JobCancelledError:
+        logger.info("job.cancelled")
+
+        cancelled_payload = JobCallbackPayload(
+            job_id=job_id,
+            project_id=project_id,
+            status=JobStatus.failed,
+            stage=current_stage,
+            progress_percent=current_progress,
+            message="Job cancelled",
+            error="cancelled",
+        )
+
+        _best_effort_callback(
+            ctx=ctx,
+            payload=cancelled_payload,
+            timeout_seconds=settings.callback_timeout_seconds,
+            max_retries=settings.callback_max_retries,
+            retry_backoff_seconds=settings.callback_retry_backoff_seconds,
+            logger=logger,
+        )
+
+        return cancelled_payload.model_dump(mode="json")
     except Exception as e:
         failed_payload = JobCallbackPayload(
             job_id=job_id,

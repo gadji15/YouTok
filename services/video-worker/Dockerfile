@@ -34,7 +34,12 @@ RUN if [ -z "$TARGETARCH" ] || [ "$TARGETARCH" = "amd64" ]; then pip install --n
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
 
+# Dev-only deps (used by CI / dockerized test runs)
+COPY requirements-dev.txt ./requirements-dev.txt
+RUN pip install --no-cache-dir --prefer-binary -r requirements-dev.txt
+
 COPY video_worker ./video_worker
+COPY tests ./tests
 
 ENV PYTHONUNBUFFERED=1
 

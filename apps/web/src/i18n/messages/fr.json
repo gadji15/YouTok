@@ -78,7 +78,9 @@
     },
     "actions": {
       "retry": "Relancer",
-      "delete": "Supprimer"
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer ce projet et tous ses clips ? Si un traitement est en cours, le job sera annulé. Cette action est irréversible.",
+      "deleting": "Suppression…"
     },
     "overview": {
       "title": "Aperçu",
@@ -87,6 +89,7 @@
       "progress": "Progression"
     },
     "stages": {
+      "queued": "En attente",
       "download": "Téléchargement",
       "extract_audio": "Extraction audio",
       "transcribe": "Transcription",
@@ -217,6 +220,19 @@
       "ready": "Prêt",
       "failed": "En erreur"
     },
+    "qualityFilters": {
+      "all": "Qualité : Tous",
+      "ok": "Qualité : OK",
+      "needsReview": "Qualité : À vérifier"
+    },
+    "sort": {
+      "created": "Tri : Récent",
+      "quality": "Tri : Qualité"
+    },
+    "quality": {
+      "ok": "OK",
+      "needsReview": "À vérifier"
+    },
     "view": {
       "table": "Tableau",
       "cards": "Cartes"
@@ -225,6 +241,7 @@
       "clip": "Clip",
       "project": "Projet",
       "status": "Statut",
+      "quality": "Qualité",
       "duration": "Durée",
       "created": "Créé"
     },

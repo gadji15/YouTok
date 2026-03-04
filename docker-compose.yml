@@ -29,7 +29,7 @@ x-backend-env: &backend_env
   # Admin-only access controls
   ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@example.com}
   ADMIN_PASSWORD: ${ADMIN_PASSWORD:-password}
-  INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-change-me}
+  INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret}
 
   # video-worker integration (optional)
   VIDEO_WORKER_BASE_URL: ${VIDEO_WORKER_BASE_URL:-}
@@ -50,6 +50,20 @@ x-backend-build: &backend_build
 x-backend-user: &backend_user "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
 
 services:
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      LARAVEL_BASE_URL: http://backend:8000
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret}
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      - backend
+
   backend_init:
     build: *backend_build
     # Run init as root so it can chown the bind-mounted ./backend directory on first boot.
@@ -80,7 +94,8 @@ services:
         condition: service_completed_successfully
     ports:
       - "8080:8000"
-    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+    # Disable auto-reload to avoid transient 404s when bind-mounted files change.
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000", "--no-reload"]
 
   queue:
     build: *backend_build
@@ -181,7 +196,8 @@ services:
       PORT: 3000
       PUBLISH_MODE: ${PUBLISH_MODE:-stub}
       # Shared secret used by backend + tiktok-bot (header X-Internal-Secret)
-      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-change-me}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret}
+      NODE_ENV: production
 
       # Persisted session cookies/state
       COOKIE_DIR: /app/storage/cookies

@@ -79,7 +79,7 @@
     "actions": {
       "retry": "Retry",
       "delete": "Delete",
-      "deleteConfirm": "Delete this project and all its clips? This cannot be undone.",
+      "deleteConfirm": "Delete this project and all its clips? If processing is running, the job will be cancelled. This cannot be undone.",
       "deleting": "Deleting…"
     },
     "overview": {
@@ -89,6 +89,7 @@
       "progress": "Progress"
     },
     "stages": {
+      "queued": "Queued",
       "download": "Download",
       "extract_audio": "Extract audio",
       "transcribe": "Transcription",
@@ -219,6 +220,19 @@
       "ready": "Ready",
       "failed": "Failed"
     },
+    "qualityFilters": {
+      "all": "Quality: All",
+      "ok": "Quality: OK",
+      "needsReview": "Quality: Review"
+    },
+    "sort": {
+      "created": "Sort: New",
+      "quality": "Sort: Quality"
+    },
+    "quality": {
+      "ok": "OK",
+      "needsReview": "Review"
+    },
     "view": {
       "table": "Table",
       "cards": "Cards"
@@ -227,6 +241,7 @@
       "clip": "Clip",
       "project": "Project",
       "status": "Status",
+      "quality": "Quality",
       "duration": "Len",
       "created": "Created"
     },

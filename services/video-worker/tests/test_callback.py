@@ -83,6 +83,11 @@ def test_callback_payload_includes_clip_subtitles_srt_path() -> None:
                         ],
                         "top3": ["Stop doing this", "What if you did this?"],
                     },
+                    quality_summary={
+                        "template": "cinematic_karaoke",
+                        "ui_safe_ymin": 0.78,
+                        "final_overlap": {"face_overlap_ratio_p95": 0.03, "ui_overlap_ratio_p95": 0.0},
+                    },
                     video_path="/shared/clip_001/video.mp4",
                     subtitles_ass_path="/shared/clip_001/subtitles.ass",
                     subtitles_srt_path="/shared/clip_001/subtitles.srt",

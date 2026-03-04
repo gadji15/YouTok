@@ -39,6 +39,9 @@ class ClipArtifact(BaseModel):
     title: str | None = None
     title_candidates: TitleCandidates | None = None
 
+    # Summary of subtitle quality diagnostics (best-effort).
+    quality_summary: dict | None = None
+
     video_path: str
     subtitles_ass_path: str | None = None
     subtitles_srt_path: str | None = None

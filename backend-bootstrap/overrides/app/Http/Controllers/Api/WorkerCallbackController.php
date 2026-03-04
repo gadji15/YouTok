@@ -56,12 +56,34 @@ class WorkerCallbackController
             'artifacts.clips.*.title_candidates.candidates.*.features' => ['sometimes', 'nullable', 'array'],
             'artifacts.clips.*.title_candidates.top3' => ['sometimes', 'array', 'max:3'],
             'artifacts.clips.*.title_candidates.top3.*' => ['string', 'max:255'],
+
+            'artifacts.clips.*.quality_summary' => ['sometimes', 'nullable', 'array'],
+            'artifacts.clips.*.quality_summary.template' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'artifacts.clips.*.quality_summary.ui_safe_ymin' => ['sometimes', 'nullable', 'numeric'],
+            'artifacts.clips.*.quality_summary.final_overlap' => ['sometimes', 'nullable', 'array'],
+            'artifacts.clips.*.quality_summary.final_overlap.face_overlap_ratio_p95' => ['sometimes', 'nullable', 'numeric'],
+            'artifacts.clips.*.quality_summary.final_overlap.ui_overlap_ratio_p95' => ['sometimes', 'nullable', 'numeric'],
+            'artifacts.clips.*.quality_summary.attempts' => ['sometimes', 'nullable', 'array'],
+
             'artifacts.clips.*.video_path' => ['nullable', 'string'],
             'artifacts.clips.*.subtitles_ass_path' => ['nullable', 'string'],
             'artifacts.clips.*.subtitles_srt_path' => ['nullable', 'string'],
         ]);
 
-        $project = Project::query()->findOrFail($payload['project_id']);
+        $project = Project::query()->find($payload['project_id']);
+        if ($project === null) {
+            // The user may have deleted the project while a worker job is still running.
+            // Acknowledge the callback to avoid failing the worker job on a 404.
+            Log::warning('worker.callback.project_not_found', [
+                'project_id' => $payload['project_id'],
+                'job_id' => $payload['job_id'],
+                'status' => $payload['status'],
+                'stage' => $payload['stage'] ?? null,
+                'progress_percent' => $payload['progress_percent'] ?? null,
+            ]);
+
+            return response()->json(['ok' => true]);
+        }
 
         PipelineEvent::log(
             type: 'worker.callback',
@@ -194,6 +216,7 @@ class WorkerCallbackController
                         'reason' => $clipPayload['reason'] ?? null,
                         'title' => $clipPayload['title'] ?? null,
                         'title_candidates' => $clipPayload['title_candidates'] ?? null,
+                        'quality_summary' => $clipPayload['quality_summary'] ?? null,
                         'video_path' => $clipPayload['video_path'] ?? null,
                         'subtitles_ass_path' => $clipPayload['subtitles_ass_path'] ?? null,
                         'subtitles_srt_path' => $clipPayload['subtitles_srt_path'] ?? null,
