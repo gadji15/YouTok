@@ -22,6 +22,7 @@ type ProjectRow = {
 };
 
 const knownStages = new Set([
+  "queued",
   "download",
   "extract_audio",
   "transcribe",

@@ -78,7 +78,9 @@
     },
     "actions": {
       "retry": "Relancer",
-      "delete": "Supprimer"
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer ce projet et tous ses clips ? Si un traitement est en cours, le job sera annulé. Cette action est irréversible.",
+      "deleting": "Suppression…"
     },
     "overview": {
       "title": "Aperçu",
@@ -87,6 +89,7 @@
       "progress": "Progression"
     },
     "stages": {
+      "queued": "En attente",
       "download": "Téléchargement",
       "extract_audio": "Extraction audio",
       "transcribe": "Transcription",

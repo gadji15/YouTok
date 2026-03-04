@@ -24,6 +24,7 @@ import { DeleteProjectButton } from "./ui/DeleteProjectButton";
 type ProjectStatus = ApiProjectStatus;
 
 const stages = [
+  "queued",
   "download",
   "extract_audio",
   "transcribe",
