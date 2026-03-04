@@ -10,25 +10,23 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasColumn('projects', 'output_aspect')) {
+        if (Schema::hasColumn('projects', 'originality_mode')) {
             return;
         }
 
         Schema::table('projects', function (Blueprint $table) {
-            // Keep ordering stable across environments: avoid `after(...)` because a
-            // previous migration history may not include the referenced column.
-            $table->string('output_aspect', 16)->default('vertical');
+            $table->string('originality_mode', 32)->default('none');
         });
     }
 
     public function down(): void
     {
-        if (!Schema::hasColumn('projects', 'output_aspect')) {
+        if (!Schema::hasColumn('projects', 'originality_mode')) {
             return;
         }
 
         Schema::table('projects', function (Blueprint $table) {
-            $table->dropColumn(['output_aspect']);
+            $table->dropColumn(['originality_mode']);
         });
     }
 };
