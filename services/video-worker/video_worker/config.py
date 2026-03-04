@@ -129,6 +129,15 @@ class Settings(BaseSettings):
         description="Max render attempts per clip when quality gate is enabled",
     )
 
+    # UI safe area calibration (TikTok/Shorts/Reels).
+    # Example: 0.78 means "bottom 22% is considered UI".
+    ui_safe_ymin: float = Field(
+        0.78,
+        ge=0.0,
+        le=1.0,
+        description="Relative Y (0..1) from which the bottom UI zone starts",
+    )
+
     callback_timeout_seconds: float = Field(20.0, ge=1)
 
     callback_max_retries: int = Field(3, ge=0, le=10)

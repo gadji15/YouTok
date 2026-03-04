@@ -123,6 +123,7 @@ def render_clips(
     quality_gate_enabled: bool = False,
     quality_gate_face_overlap_p95_threshold: float = 0.05,
     quality_gate_max_attempts: int = 2,
+    ui_safe_ymin: float = 0.78,
 ) -> list[dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -252,6 +253,7 @@ def render_clips(
                 play_res_y=1920,
                 work_dir=clip_dir / "subtitle_placement",
                 logger=logger.bind(clip_id=clip.clip_id),
+                ui_safe_ymin=ui_safe_ymin,
             )
 
             used_source = "stylized"
@@ -304,6 +306,7 @@ def render_clips(
                     "subtitles": {
                         "enabled": True,
                         "template": subtitle_template,
+                        "ui_safe_ymin": ui_safe_ymin,
                         "placement": {
                             "alignment": placement.alignment,
                             "x": placement.x,
@@ -501,8 +504,10 @@ def render_clips(
             attempt_placements.append((placement.alignment, placement.x, placement.y))
 
             if quality_gate_enabled:
+                # Shift up relative to configured UI safe zone.
                 shift = int(max(1920 * 0.06, 100))
-                y_up = max(int(1920 * 0.10), placement.y - shift)
+                safe_top = int(max(1920 * 0.10, 1920 * (float(ui_safe_ymin) - 0.16)))
+                y_up = max(safe_top, placement.y - shift)
                 attempt_placements.append((2, 1080 // 2, y_up))
 
                 top_margin = int(max(1920 * 0.08, 120))
@@ -586,6 +591,7 @@ def render_clips(
                     work_dir=clip_dir / f"overlap_final_attempt_{attempt_idx}",
                     logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx),
                     sample_fps=1,
+                    ui_safe_ymin=ui_safe_ymin,
                 )
 
                 last_face95 = face95
@@ -636,6 +642,7 @@ def render_clips(
                     raw["subtitles"]["final_overlap"] = {
                         "measured_on": "rendered_video",
                         "sample_fps": 1,
+                        "ui_safe_ymin": ui_safe_ymin,
                         "face_overlap_ratio_p95": last.get("face_overlap_ratio_p95", 0.0),
                         "ui_overlap_ratio_p95": last.get("ui_overlap_ratio_p95", 0.0),
                     }

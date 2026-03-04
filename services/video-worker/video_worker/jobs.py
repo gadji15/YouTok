@@ -316,6 +316,7 @@ def process_job(
             quality_gate_enabled=settings.quality_gate_enabled,
             quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
             quality_gate_max_attempts=settings.quality_gate_max_attempts,
+            ui_safe_ymin=settings.ui_safe_ymin,
         )
 
         clip_artifacts: list[ClipArtifact] = []

@@ -78,6 +78,22 @@ python -m video_worker.worker
 python -m pytest -q
 ```
 
+### Subtitle/UI tuning
+
+The worker uses a simple "bottom UI zone" model to avoid subtitles overlapping TikTok UI.
+
+- `VIDEO_WORKER_UI_SAFE_YMIN` (default: `0.78`): relative Y (0..1) where the bottom UI zone starts.
+  - `0.78` means the bottom ~22% is considered UI.
+
+Quality gate (optional):
+
+- `VIDEO_WORKER_QUALITY_GATE_ENABLED` (default: `false`)
+- `VIDEO_WORKER_QUALITY_GATE_FACE_OVERLAP_P95_THRESHOLD` (default: `0.05`)
+- `VIDEO_WORKER_QUALITY_GATE_MAX_ATTEMPTS` (default: `2`)
+
+When enabled, each clip can be rendered multiple times with alternative subtitle placements until
+`face_overlap_ratio_p95 <= threshold` (measured on the final rendered video).
+
 If you don't have `venv` support installed, on Debian/Ubuntu you typically need:
 
 ```bash

@@ -285,13 +285,14 @@ def _compute_overlap_metrics(
     play_res_x: int,
     play_res_y: int,
     box_h_px: int,
+    ui_safe_ymin: float = 0.78,
 ) -> tuple[float, float]:
     """Return (face_overlap_p95, ui_overlap_p95)."""
 
     sub = _subtitle_box_rel(placement=placement, play_res_x=play_res_x, play_res_y=play_res_y, box_h_px=box_h_px)
 
-    # Bottom UI safe zone (V1): assume TikTok UI occupies ~bottom 22%.
-    ui = (0.0, 0.78, 1.0, 1.0)
+    # Bottom UI safe zone (configurable): assume UI occupies the region y>=ui_safe_ymin.
+    ui = (0.0, float(ui_safe_ymin), 1.0, 1.0)
 
     face_overlaps: list[float] = []
     ui_overlaps: list[float] = []
@@ -321,6 +322,7 @@ def measure_overlap_p95_for_video(
     work_dir: Path,
     logger: structlog.BoundLogger,
     sample_fps: int = 1,
+    ui_safe_ymin: float = 0.78,
 ) -> tuple[float, float]:
     """Measure overlap p95 on a rendered clip.
 
@@ -350,6 +352,7 @@ def measure_overlap_p95_for_video(
             play_res_x=play_res_x,
             play_res_y=play_res_y,
             box_h_px=box_h,
+            ui_safe_ymin=ui_safe_ymin,
         )
     except Exception:
         logger.exception("subtitles.overlap_measure_failed")
@@ -365,6 +368,7 @@ def choose_subtitle_placement(
     play_res_y: int,
     work_dir: Path,
     logger: structlog.BoundLogger,
+    ui_safe_ymin: float = 0.78,
 ) -> SubtitlePlacement:
     """Pick a safe subtitle placement.
 
@@ -482,6 +486,7 @@ def choose_subtitle_placement(
                 play_res_x=play_res_x,
                 play_res_y=play_res_y,
                 box_h_px=box_h,
+                ui_safe_ymin=ui_safe_ymin,
             )
             face_p95_by_candidate.append(f95)
             ui_p95_by_candidate.append(u95)
@@ -536,6 +541,7 @@ def choose_subtitle_placement(
             play_res_x=play_res_x,
             play_res_y=play_res_y,
             box_h_px=box_h,
+            ui_safe_ymin=ui_safe_ymin,
         )
 
     # Safety: if face overlap is still too high, shift up once.
@@ -548,6 +554,7 @@ def choose_subtitle_placement(
             play_res_x=play_res_x,
             play_res_y=play_res_y,
             box_h_px=box_h,
+            ui_safe_ymin=ui_safe_ymin,
         )
 
     best = SubtitlePlacement(
