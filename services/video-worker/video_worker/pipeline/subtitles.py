@@ -219,7 +219,7 @@ def write_word_level_ass_for_clip(
     max_words_per_line: int = 10,
     max_chars_per_line: int = 42,
 ) -> None:
-    """Generate a word-timed .ass file.
+    r"""Generate a word-timed .ass file.
 
     - Uses per-word timings to split into short, readable subtitle "chunks".
     - Karaoke highlighting is only enabled for templates explicitly ending with "_karaoke"

@@ -9,7 +9,8 @@ def test_build_piecewise_linear_x_expr_smoke() -> None:
     # Should reference t, include between() guards, and be deterministic.
     assert "between(t" in expr
     assert "t-0.0" in expr or "t-0" in expr
-    assert expr.endswith("50")
+    # The final fallback should be the last x value.
+    assert expr.endswith(",50))") or expr.endswith(",50)")
 
 
 def test_build_piecewise_linear_single_point() -> None:
