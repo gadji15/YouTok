@@ -50,6 +50,19 @@ x-backend-build: &backend_build
 x-backend-user: &backend_user "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
 
 services:
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      LARAVEL_BASE_URL: http://backend:8000
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-change-me}
+      NODE_ENV: production
+    depends_on:
+      - backend
+
   backend_init:
     build: *backend_build
     # Run init as root so it can chown the bind-mounted ./backend directory on first boot.
