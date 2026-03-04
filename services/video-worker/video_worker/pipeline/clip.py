@@ -195,6 +195,30 @@ def render_clips(
 
         tool_ass_generated = False
 
+        placement = None
+        if subtitles_enabled:
+            try:
+                placement = choose_subtitle_placement(
+                    source_video=source_video,
+                    clip_start_seconds=clip.start_seconds,
+                    clip_end_seconds=clip.end_seconds,
+                    play_res_x=1080,
+                    play_res_y=1920,
+                    work_dir=clip_dir / "subtitle_placement",
+                    logger=logger.bind(clip_id=clip.clip_id),
+                    ui_safe_ymin=ui_safe_ymin,
+                )
+            except TypeError:
+                placement = choose_subtitle_placement(
+                    source_video=source_video,
+                    clip_start_seconds=clip.start_seconds,
+                    clip_end_seconds=clip.end_seconds,
+                    play_res_x=1080,
+                    play_res_y=1920,
+                    work_dir=clip_dir / "subtitle_placement",
+                    logger=logger.bind(clip_id=clip.clip_id),
+                )
+
         # Attempt to produce word-level timings and an ASS via the bundled tools.
         # NOTE: This runs inside the worker image where the package lives at /app/video_worker.
         try:
@@ -233,10 +257,32 @@ def render_clips(
             # If words.json produced, call make_ass to create an ASS file
             mak = tools_dir / "make_ass.py"
             if words_json.exists() and mak.exists():
-                run(
-                    ["python3", str(mak), "--words", str(words_json), "--out", str(out_ass), "--video", str(source_video)],
-                    logger=logger.bind(clip_id=clip.clip_id),
-                )
+                cmd = [
+                    "python3",
+                    str(mak),
+                    "--words",
+                    str(words_json),
+                    "--out",
+                    str(out_ass),
+                    "--video",
+                    str(source_video),
+                    "--template",
+                    str(subtitle_template),
+                    "--ui-safe-ymin",
+                    str(ui_safe_ymin),
+                ]
+
+                if placement is not None:
+                    cmd += [
+                        "--an",
+                        str(placement.alignment),
+                        "--x",
+                        str(placement.x),
+                        "--y",
+                        str(placement.y),
+                    ]
+
+                run(cmd, logger=logger.bind(clip_id=clip.clip_id))
                 tool_ass_generated = out_ass.exists() and out_ass.stat().st_size > 0
         except Exception:
             logger.exception("external_ass_generation_failed", clip_id=clip.clip_id)
@@ -247,37 +293,13 @@ def render_clips(
             if s.text.strip() and s.end_seconds > clip.start_seconds and s.start_seconds < clip.end_seconds
         ]
 
-        placement = None
         if subtitles_enabled:
-            try:
-                placement = choose_subtitle_placement(
-                    source_video=source_video,
-                    clip_start_seconds=clip.start_seconds,
-                    clip_end_seconds=clip.end_seconds,
-                    play_res_x=1080,
-                    play_res_y=1920,
-                    work_dir=clip_dir / "subtitle_placement",
-                    logger=logger.bind(clip_id=clip.clip_id),
-                    ui_safe_ymin=ui_safe_ymin,
-                )
-            except TypeError:
-                # Best-effort: older worker images may not support ui_safe_ymin.
-                placement = choose_subtitle_placement(
-                    source_video=source_video,
-                    clip_start_seconds=clip.start_seconds,
-                    clip_end_seconds=clip.end_seconds,
-                    play_res_x=1080,
-                    play_res_y=1920,
-                    work_dir=clip_dir / "subtitle_placement",
-                    logger=logger.bind(clip_id=clip.clip_id),
-                )
-
             used_source = "stylized"
 
             # Prefer true word timings (WhisperX or heuristic approximation from the full transcript).
             if tool_ass_generated:
                 used_source = "word_timings_tools"
-            elif word_timings and len(word_timings) > 0:
+            elif placement is not None and word_timings and len(word_timings) > 0:
                 write_word_level_ass_for_clip(
                     clip_start_seconds=clip.start_seconds,
                     clip_end_seconds=clip.end_seconds,

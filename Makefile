@@ -1,4 +1,4 @@
-.PHONY: up up-video-worker up-tiktok-bot down logs backend-shell migrate seed-admin queue-logs video-worker-test
+.PHONY: up up-video-worker up-tiktok-bot down down-hard logs backend-shell migrate seed-admin queue-logs video-worker-test
 
 up:
 	docker compose up -d --build
@@ -10,6 +10,9 @@ up-tiktok-bot:
 	docker compose --profile tiktok-bot up -d --build
 
 down:
+	docker compose down
+
+down-hard:
 	docker compose down -v
 
 logs:

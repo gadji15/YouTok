@@ -301,6 +301,12 @@ def write_word_level_ass_for_clip(
 
     # Select words for the clip and shift times to clip-relative.
     clip_words: list[WordTiming] = []
+
+    def _is_punct_only(t: str) -> bool:
+        import re
+
+        return re.fullmatch(r"[\,\.\!\?\;\:\…\)\]\}\»]+", t) is not None
+
     for w in words:
         if w.end_seconds <= clip_start_seconds:
             continue
@@ -313,6 +319,19 @@ def write_word_level_ass_for_clip(
 
         wt = _clean_text(w.word)
         if not wt:
+            continue
+
+        # WhisperX often emits punctuation as separate "words" (e.g. "," or "?").
+        # If we join with spaces, we get "anti-space" before punctuation.
+        # Merge punctuation tokens into the previous word instead.
+        if _is_punct_only(wt) and clip_words:
+            prev = clip_words[-1]
+            clip_words[-1] = WordTiming(
+                word=prev.word + wt,
+                start_seconds=prev.start_seconds,
+                end_seconds=float(end),
+                confidence=prev.confidence,
+            )
             continue
 
         clip_words.append(
