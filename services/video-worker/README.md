@@ -50,8 +50,10 @@ API hardening (optional):
 
 ## Run locally
 
+On Debian/Ubuntu with Python 3.12+, you may see `error: externally-managed-environment` (PEP 668) if you try to `pip install` system-wide. Use a virtualenv.
+
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 . .venv/bin/activate
 
 # Light install (enough for unit tests + API scaffolding)
@@ -67,6 +69,20 @@ uvicorn video_worker.api:app --host 0.0.0.0 --port 8000
 # Worker (separate terminal)
 export VIDEO_WORKER_REDIS_URL=redis://localhost:6379/0
 python -m video_worker.worker
+```
+
+### Run tests
+
+```bash
+. .venv/bin/activate
+python -m pytest -q
+```
+
+If you don't have `venv` support installed, on Debian/Ubuntu you typically need:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3-venv
 ```
 
 ## Job callback payload
