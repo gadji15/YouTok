@@ -55,14 +55,12 @@ def make_ass_header(
 
     if template in {"cinematic", "cinematic_karaoke"}:
         style = (
-            "Style: Default,Noto Sans,66,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,"
-            f"1,0,0,0,100,100,0,0,1,7,1,2,{margin_l},{margin_r},170,1"
+            "Style: Default,Noto Sans,66,&H00FFFFFF,&H00FFFFFF,&H00101            f"Sty            f"1,0,0,0,100,100,0,0,1,7,1,2,{margin_l},{margin_r},170,1"
         )
     else:
         style = (
             "Style: Default,Noto Sans,62,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,"
-            f"1,0,0,0,100,100,0,0,1,6,0,2,{margin_l},{margin_r},160,1"
-        )
+            f"1,0,0,0,100,100,0,0,1,6,0,2,{margin_l},{margin_r}                )
 
     header = [
         "[Script Info]",
@@ -75,9 +73,7 @@ def make_ass_header(
         "ScaledBorderAndShadow: yes",
         "",
         "[V4+ Styles]",
-        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        style,
-        "",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacin        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bo        "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
@@ -119,8 +115,7 @@ def join_tokens(tokens: List[str]) -> str:
 
 
 def group_words_to_lines(words: List[Dict], max_chars: int = 40) -> List[Tuple[str, float, float]]:
-    """Group words into events. Returns list of (text, start, end)."""
-
+    """Group words into events. Returns list of (text, startdef group_w
     lines: List[Tuple[str, float, float]] = []
     cur_words: List[str] = []
     cur_start: float | None = None
@@ -215,6 +210,9 @@ def write_ass(
 ) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
 
+    margin_l = max(60, int(round(120 * float(play_res_x) / 1080.0)))
+    margin_r = max(60, int(round(120 * f    out.parent.mkdir(parents=True, exist_ok=True)
+
     margin_l = 120
     margin_r = 120
 
@@ -283,8 +281,7 @@ def main(argv=None) -> int:
         y=args.y,
         an=int(args.an),
         template=str(args.template),
-        ui_safe_ymin=float(args.ui_safe_ymin),
-    )
+        ui_safe_ymin=float(args.ui_s    raise S    )
 
     return 0
 

@@ -218,6 +218,8 @@ def render_clips(
         play_res_y = 1920
         effective_ui_safe_ymin = ui_safe_ymin
 
+    is_source_aspect = effective_output_aspect == "source"
+
     # Vertical (9:16) is the default TikTok-ready output
     for clip in clips:
         clip_dir = output_dir / clip.clip_id
@@ -325,10 +327,14 @@ def render_clips(
                         str(out_ass),
                         "--video",
                         str(source_video),
+                        "--play-res-x",
+                        str(play_res_x),
+                        "--play-res-y",
+                        str(play_res_y),
                         "--template",
                         str(subtitle_template),
                         "--ui-safe-ymin",
-                        str(ui_safe_ymin),
+                        str(effective_ui_safe_ymin),
                     ]
 
                     if placement is not None:
@@ -395,6 +401,8 @@ def render_clips(
                         clip_end_seconds=clip.end_seconds,
                         segments=transcript_segments,
                         output_path=out_ass,
+                        play_res_x=play_res_x,
+                        play_res_y=play_res_y,
                         template=subtitle_template,
                     )
                     used_source = "stylized"
@@ -409,7 +417,7 @@ def render_clips(
                     "subtitles": {
                         "enabled": True,
                         "template": subtitle_template,
-                        "ui_safe_ymin": ui_safe_ymin,
+                        "ui_safe_ymin": effective_ui_safe_ymin,
                         "placement": {
                             "alignment": placement.alignment,
                             "x": placement.x,
@@ -477,84 +485,92 @@ def render_clips(
         if duration <= 0:
             continue
 
-        # Dynamic horizontal reframing (subject tracking + smoothing):
-        # - Prefer face center per sampled frame.
-        # - Fall back to motion center when no face is detected.
-        # - Smooth the resulting crop curve to avoid jitter.
-        # - Use a piecewise-linear crop x(t) for better framing than start->end only.
-
-        # We'll keep the expression small by using up to 5 knot points.
-        knot_count = 5
-        if duration < 8.0:
-            knot_count = 3
-
-        t_points = [i * (duration / max(1, knot_count - 1)) for i in range(knot_count)]
-
-        crop_x_points: list[int] = []
-        centers_dbg: list[float | None] = []
-
-        for i, t_rel in enumerate(t_points):
-            # Small window around the knot (stabilizes detection).
-            w = 3.0 if duration > 20 else 2.0
-            a0 = max(clip.start_seconds, clip.start_seconds + t_rel - w / 2.0)
-            a1 = min(clip.end_seconds, clip.start_seconds + t_rel + w / 2.0)
-            center = _estimate_best_center_x_rel(
-                video_path=source_video,
-                start_seconds=a0,
-                end_seconds=a1,
-                work_dir=clip_dir / f"track_knot_{i}",
-            )
-            centers_dbg.append(center)
-            if center is None:
-                center = 0.5
-
-            crop_x_points.append(_compute_crop_x_pixels(source_video=source_video, center_x_rel=float(center)))
-
-        # Smooth crop positions using an exponential moving average.
-        smoothed = [int(round(v)) for v in _ema_smooth([float(x) for x in crop_x_points], alpha=0.55)]
-
-        # Enforce a max pan speed between consecutive knots.
-        max_pan_px_per_sec = 220.0
-        for i in range(1, len(smoothed)):
-            dt = max(0.001, t_points[i] - t_points[i - 1])
-            max_delta = int(round(max_pan_px_per_sec * dt))
-            delta = smoothed[i] - smoothed[i - 1]
-            if abs(delta) > max_delta:
-                smoothed[i] = smoothed[i - 1] + (max_delta if delta > 0 else -max_delta)
-
-        # If still basically static, keep filter simple.
-        if max(smoothed) - min(smoothed) < 24:
-            crop_filter = f"crop=1080:1920:x={smoothed[0]}:y=(ih-1920)/2"
+        if is_source_aspect:
+            vf_parts = [
+                # Ensure even dimensions for yuv420p without changing aspect.
+                "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                f"fps={fps}",
+            ]
         else:
-            expr = _build_piecewise_linear_x_expr(t_points=t_points, x_points=smoothed)
-            crop_filter = "crop=1080:1920:" + f"x='max(0,min({expr},iw-1080))'" + ":y=(ih-1920)/2"
+            # Dynamic horizontal reframing (subject tracking + smoothing):
+            # - Prefer face center per sampled frame.
+            # - Fall back to motion center when no face is detected.
+            # - Smooth the resulting crop curve to avoid jitter.
+            # - Use a piecewise-linear crop x(t) for better framing than start->end only.
 
-        # Persist tracking diagnostics (useful for QA).
-        try:
-            track_path = clip_dir / "track.json"
-            track_path.write_text(
-                json.dumps(
-                    {
-                        "duration": duration,
-                        "t_points": t_points,
-                        "centers_x_rel": centers_dbg,
-                        "crop_x_points": crop_x_points,
-                        "crop_x_points_smoothed": smoothed,
-                    },
-                    ensure_ascii=False,
-                    indent=2,
+            # We'll keep the expression small by using up to 5 knot points.
+            knot_count = 5
+            if duration < 8.0:
+                knot_count = 3
+
+            t_points = [i * (duration / max(1, knot_count - 1)) for i in range(knot_count)]
+
+            crop_x_points: list[int] = []
+            centers_dbg: list[float | None] = []
+
+            for i, t_rel in enumerate(t_points):
+                # Small window around the knot (stabilizes detection).
+                w = 3.0 if duration > 20 else 2.0
+                a0 = max(clip.start_seconds, clip.start_seconds + t_rel - w / 2.0)
+                a1 = min(clip.end_seconds, clip.start_seconds + t_rel + w / 2.0)
+                center = _estimate_best_center_x_rel(
+                    video_path=source_video,
+                    start_seconds=a0,
+                    end_seconds=a1,
+                    work_dir=clip_dir / f"track_knot_{i}",
                 )
-                + "\n",
-                encoding="utf-8",
-            )
-        except Exception:
-            logger.exception("clip.track_write_failed", clip_id=clip.clip_id)
+                centers_dbg.append(center)
+                if center is None:
+                    center = 0.5
 
-        vf_parts = [
-            "scale=1080:1920:force_original_aspect_ratio=increase",
-            crop_filter,
-            f"fps={fps}",
-        ]
+                crop_x_points.append(_compute_crop_x_pixels(source_video=source_video, center_x_rel=float(center)))
+
+            # Smooth crop positions using an exponential moving average.
+            smoothed = [int(round(v)) for v in _ema_smooth([float(x) for x in crop_x_points], alpha=0.55)]
+
+            # Enforce a max pan speed between consecutive knots.
+            max_pan_px_per_sec = 220.0
+            for i in range(1, len(smoothed)):
+                dt = max(0.001, t_points[i] - t_points[i - 1])
+                max_delta = int(round(max_pan_px_per_sec * dt))
+                delta = smoothed[i] - smoothed[i - 1]
+                if abs(delta) > max_delta:
+                    smoothed[i] = smoothed[i - 1] + (max_delta if delta > 0 else -max_delta)
+
+            # If still basically static, keep filter simple.
+            if max(smoothed) - min(smoothed) < 24:
+                crop_filter = f"crop=1080:1920:x={smoothed[0]}:y=(ih-1920)/2"
+            else:
+                expr = _build_piecewise_linear_x_expr(t_points=t_points, x_points=smoothed)
+                crop_filter = "crop=1080:1920:" + f"x='max(0,min({expr},iw-1080))'" + ":y=(ih-1920)/2"
+
+            # Persist tracking diagnostics (useful for QA).
+            try:
+                track_path = clip_dir / "track.json"
+                track_path.write_text(
+                    json.dumps(
+                        {
+                            "duration": duration,
+                            "t_points": t_points,
+                            "centers_x_rel": centers_dbg,
+                            "crop_x_points": crop_x_points,
+                            "crop_x_points_smoothed": smoothed,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+            except Exception:
+                logger.exception("clip.track_write_failed", clip_id=clip.clip_id)
+
+            vf_parts = [
+                "scale=1080:1920:force_original_aspect_ratio=increase",
+                crop_filter,
+                f"fps={fps}",
+            ]
+
         if subtitles_enabled:
             vf_parts.append(f"ass={_ffmpeg_filter_escape_path(out_ass)}")
 
@@ -648,13 +664,18 @@ def render_clips(
 
             if quality_gate_enabled:
                 # Shift up relative to configured UI safe zone.
-                shift = int(max(1920 * 0.06, 100))
-                safe_top = int(max(1920 * 0.10, 1920 * (float(ui_safe_ymin) - 0.16)))
-                y_up = max(safe_top, placement.y - shift)
-                attempt_placements.append((2, 1080 // 2, y_up))
+                shift = int(max(play_res_y * 0.06, 100))
 
-                top_margin = int(max(1920 * 0.08, 120))
-                attempt_placements.append((8, 1080 // 2, top_margin))
+                if effective_output_aspect == "vertical":
+                    safe_top = int(max(play_res_y * 0.10, play_res_y * (float(effective_ui_safe_ymin) - 0.16)))
+                else:
+                    safe_top = int(play_res_y * 0.10)
+
+                y_up = max(safe_top, placement.y - shift)
+                attempt_placements.append((2, play_res_x // 2, y_up))
+
+                top_margin = int(max(play_res_y * 0.08, 120))
+                attempt_placements.append((8, play_res_x // 2, top_margin))
 
         max_attempts = max(1, int(quality_gate_max_attempts))
         attempt_placements = attempt_placements[: max_attempts]
@@ -668,6 +689,8 @@ def render_clips(
                     words=clip_word_timings,
                     output_path=out_ass,
                     placement=pl,
+                    play_res_x=play_res_x,
+                    play_res_y=play_res_y,
                     template=subtitle_template,
                 )
                 return
@@ -680,6 +703,8 @@ def render_clips(
                     words=approx,
                     output_path=out_ass,
                     placement=pl,
+                    play_res_x=play_res_x,
+                    play_res_y=play_res_y,
                     template=subtitle_template,
                 )
                 return
@@ -690,6 +715,8 @@ def render_clips(
                 clip_end_seconds=clip.end_seconds,
                 segments=transcript_segments,
                 output_path=out_ass,
+                play_res_x=play_res_x,
+                play_res_y=play_res_y,
                 template=subtitle_template,
             )
 
@@ -711,13 +738,7 @@ def render_clips(
                 if not tool_ass_generated:
                     _write_ass_for_attempt(pl)
 
-                vf_once = [
-                    "scale=1080:1920:force_original_aspect_ratio=increase",
-                    crop_filter,
-                    f"fps={fps}",
-                ]
-                if subtitles_enabled:
-                    vf_once.append(f"ass={_ffmpeg_filter_escape_path(out_ass)}")
+                vf_once = list(vf_parts)
 
                 ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once))
 
@@ -729,12 +750,12 @@ def render_clips(
                         start_seconds=0.0,
                         end_seconds=float(duration),
                         placement=SubtitlePlacement(alignment=pl[0], x=pl[1], y=pl[2]),
-                        play_res_x=1080,
-                        play_res_y=1920,
+                        play_res_x=play_res_x,
+                        play_res_y=play_res_y,
                         work_dir=clip_dir / f"overlap_final_attempt_{attempt_idx}",
                         logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx),
                         sample_fps=1,
-                        ui_safe_ymin=ui_safe_ymin,
+                        ui_safe_ymin=effective_ui_safe_ymin,
                     )
                 except TypeError:
                     # Best-effort: older worker images may not support ui_safe_ymin.
@@ -743,8 +764,8 @@ def render_clips(
                         start_seconds=0.0,
                         end_seconds=float(duration),
                         placement=SubtitlePlacement(alignment=pl[0], x=pl[1], y=pl[2]),
-                        play_res_x=1080,
-                        play_res_y=1920,
+                        play_res_x=play_res_x,
+                        play_res_y=play_res_y,
                         work_dir=clip_dir / f"overlap_final_attempt_{attempt_idx}",
                         logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx),
                         sample_fps=1,
@@ -798,7 +819,7 @@ def render_clips(
                     raw["subtitles"]["final_overlap"] = {
                         "measured_on": "rendered_video",
                         "sample_fps": 1,
-                        "ui_safe_ymin": ui_safe_ymin,
+                        "ui_safe_ymin": effective_ui_safe_ymin,
                         "face_overlap_ratio_p95": last.get("face_overlap_ratio_p95", 0.0),
                         "ui_overlap_ratio_p95": last.get("ui_overlap_ratio_p95", 0.0),
                     }

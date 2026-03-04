@@ -198,9 +198,3 @@ class ProjectController
         return response()->noContent();
     }
 }
-
-        $project->delete();
-
-        return response()->noContent();
-    }
-}
