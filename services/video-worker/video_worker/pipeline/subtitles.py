@@ -221,6 +221,11 @@ def write_word_level_ass_for_clip(
 ) -> None:
     r"""Generate a word-timed .ass file.
 
+    Templates:
+    - default|modern|karaoke|modern_karaoke (existing)
+    - cinematic|cinematic_karaoke (new): slightly larger, more contrast, subtle pop-in.
+
+    Notes:
     - Uses per-word timings to split into short, readable subtitle "chunks".
     - Karaoke highlighting is only enabled for templates explicitly ending with "_karaoke"
       (or "karaoke"), and is disabled for RTL scripts (e.g. Arabic) where karaoke is
@@ -243,7 +248,7 @@ def write_word_level_ass_for_clip(
 
         return re.search(r"[\u0590-\u08FF]", t) is not None
 
-    karaoke_enabled = template in {"karaoke", "modern_karaoke"}
+    karaoke_enabled = template in {"karaoke", "modern_karaoke", "cinematic_karaoke"}
 
     # Styles:
     # - Karaoke: Primary = highlight, Secondary = base
@@ -252,10 +257,15 @@ def write_word_level_ass_for_clip(
         style_line = "Style: Default,Noto Sans,62,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
         if template == "karaoke":
             style_line = "Style: Default,Noto Sans,58,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
+        if template == "cinematic_karaoke":
+            # Larger, higher contrast, slightly stronger shadow.
+            style_line = "Style: Default,Noto Sans,66,&H0000C8FF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
     else:
         style_line = "Style: Default,Noto Sans,62,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
         if template == "default":
             style_line = "Style: Default,Noto Sans,58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
+        if template == "cinematic":
+            style_line = "Style: Default,Noto Sans,66,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
 
     header = "\n".join(
         [
@@ -280,7 +290,12 @@ def write_word_level_ass_for_clip(
         placement = (2, play_res_x // 2, play_res_y - int(max(play_res_y * 0.14, 240)))
 
     an, px, py = placement
-    pos_tag = f"{{\\an{an}\\pos({px},{py})\\blur2}}"
+
+    # Cinematic template: subtle pop-in and slightly stronger blur for a smoother look.
+    if template in {"cinematic", "cinematic_karaoke"}:
+        pos_tag = f"{{\\an{an}\\pos({px},{py})\\blur3\\fad(80,120)}}"
+    else:
+        pos_tag = f"{{\\an{an}\\pos({px},{py})\\blur2}}"
 
     # Select words for the clip and shift times to clip-relative.
     clip_words: list[WordTiming] = []
@@ -370,6 +385,8 @@ def write_word_level_ass_for_clip(
         if end <= start:
             end = start + 0.01
 
+        cinematic = template in {"cinematic", "cinematic_karaoke"}
+
         if karaoke_enabled:
             dur_cs_total = max(1, int(round((end - start) * 100)))
             raw = [max(1, int(round((w.end_seconds - w.start_seconds) * 100))) for w in chunk]
@@ -394,6 +411,11 @@ def write_word_level_ass_for_clip(
             text = " ".join(line1) + "\\N" + " ".join(line2)
         else:
             text = " ".join(line1)
+
+        if cinematic:
+            # Subtle scale-in at the start of each event.
+            # This works well on TikTok without being distracting.
+            text = "{\\t(0,120,\\fscx105\\fscy105)}" + text
 
         return start, end, text
 

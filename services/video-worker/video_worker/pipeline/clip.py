@@ -193,6 +193,8 @@ def render_clips(
             output_path=out_srt,
         )
 
+        tool_ass_generated = False
+
         # Attempt to produce word-level timings and an ASS via the new tools.
         try:
             repo_root = Path(__file__).resolve().parents[4]
@@ -231,9 +233,11 @@ def render_clips(
             # If words.json produced, call make_ass to create an ASS file
             mak = tools_dir / "make_ass.py"
             if words_json.exists() and mak.exists():
-                run(["python3", str(mak), "--words", str(words_json), "--out", str(out_ass), "--video", str(source_video)], logger=logger.bind(clip_id=clip.clip_id))
-                # mark that we've generated the ASS from tools
-                used_source = "word_timings_tools"
+                run(
+                    ["python3", str(mak), "--words", str(words_json), "--out", str(out_ass), "--video", str(source_video)],
+                    logger=logger.bind(clip_id=clip.clip_id),
+                )
+                tool_ass_generated = out_ass.exists() and out_ass.stat().st_size > 0
         except Exception:
             logger.exception("external_ass_generation_failed", clip_id=clip.clip_id)
 
@@ -259,11 +263,13 @@ def render_clips(
             used_source = "stylized"
 
             # Prefer true word timings (WhisperX or heuristic approximation from the full transcript).
-            if (word_timings and len(word_timings) > 0) or (out_ass.exists() and used_source == "word_timings_tools"):
+            if tool_ass_generated:
+                used_source = "word_timings_tools"
+            elif word_timings and len(word_timings) > 0:
                 write_word_level_ass_for_clip(
                     clip_start_seconds=clip.start_seconds,
                     clip_end_seconds=clip.end_seconds,
-                    words=word_timings or [],
+                    words=word_timings,
                     output_path=out_ass,
                     placement=(placement.alignment, placement.x, placement.y),
                     template=subtitle_template,
@@ -563,7 +569,10 @@ def render_clips(
             last_ui95 = 0.0
 
             for attempt_idx, pl in enumerate(attempt_placements, start=1):
-                _write_ass_for_attempt(pl)
+                # When an external tool generated an ASS, we keep it as-is.
+                # Otherwise we regenerate ASS for each attempt to apply the alternative placement.
+                if not tool_ass_generated:
+                    _write_ass_for_attempt(pl)
 
                 vf_once = [
                     "scale=1080:1920:force_original_aspect_ratio=increase",
