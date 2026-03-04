@@ -80,7 +80,8 @@ services:
         condition: service_completed_successfully
     ports:
       - "8080:8000"
-    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+    # Disable auto-reload to avoid transient 404s when bind-mounted files change.
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000", "--no-reload"]
 
   queue:
     build: *backend_build

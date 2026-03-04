@@ -112,7 +112,10 @@ services:
     depends_on:
       backend_init:
         condition: service_completed_successfully
-    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+    # Use Laravel's built-in server but disable auto-reload.
+    # Auto-reload can restart the server when bind-mounted files change, causing
+    # transient 404s during worker callbacks.
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000", "--no-reload"]
 
   queue:
     build:
