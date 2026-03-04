@@ -39,6 +39,7 @@ COPY requirements-dev.txt ./requirements-dev.txt
 RUN pip install --no-cache-dir --prefer-binary -r requirements-dev.txt
 
 COPY video_worker ./video_worker
+COPY tests ./tests
 
 ENV PYTHONUNBUFFERED=1
 
