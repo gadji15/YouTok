@@ -250,6 +250,8 @@ def write_word_level_ass_for_clip(
 
     karaoke_enabled = template in {"karaoke", "modern_karaoke", "cinematic_karaoke"}
 
+    cinematic = template in {"cinematic", "cinematic_karaoke"}
+
     # Styles:
     # - Karaoke: Primary = highlight, Secondary = base
     # - Non-karaoke: Primary = base
@@ -326,6 +328,126 @@ def write_word_level_ass_for_clip(
 
     if any(_contains_rtl(w.word) for w in clip_words):
         karaoke_enabled = False
+        cinematic = False
+
+    def _norm_for_match(t: str) -> str:
+        import re
+
+        t = t.lower()
+        t = re.sub(r"[^0-9a-zA-Z\u00C0-\u024F]+", "", t)
+        return t
+
+    def _pick_hook_words() -> set[str]:
+        # Best-effort keyword selection for the opening hook.
+        # We keep it deterministic and simple (no ML here).
+        hook_window_seconds = 3.0
+        stop = {
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "to",
+            "of",
+            "in",
+            "on",
+            "for",
+            "with",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "this",
+            "that",
+            "it",
+            "i",
+            "you",
+            "we",
+            "they",
+            "he",
+            "she",
+            "them",
+            "his",
+            "her",
+            "our",
+            "your",
+            "my",
+            "me",
+            "do",
+            "does",
+            "did",
+            "dont",
+            "not",
+            "no",
+            "oui",
+            "non",
+            "et",
+            "ou",
+            "de",
+            "des",
+            "du",
+            "la",
+            "le",
+            "les",
+            "un",
+            "une",
+            "dans",
+            "sur",
+            "pour",
+            "avec",
+            "est",
+            "sont",
+            "été",
+            "etre",
+            "être",
+            "ce",
+            "cet",
+            "cette",
+            "ça",
+            "ca",
+            "je",
+            "tu",
+            "il",
+            "elle",
+            "nous",
+            "vous",
+            "ils",
+            "elles",
+        }
+
+        scored: dict[str, float] = {}
+        for w in clip_words:
+            if w.start_seconds > hook_window_seconds:
+                break
+
+            raw = _norm_for_match(w.word)
+            if not raw or raw in stop:
+                continue
+            if len(raw) < 4:
+                continue
+
+            # Score: prefer earlier + longer.
+            score = (1.0 / (0.35 + float(w.start_seconds))) + (min(12, len(raw)) / 8.0)
+            scored[raw] = max(scored.get(raw, 0.0), score)
+
+        top = sorted(scored.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        return {k for k, _ in top}
+
+    hook_words = _pick_hook_words() if cinematic else set()
+
+    def _maybe_highlight_word(*, original: str, start_seconds: float) -> str:
+        if not cinematic:
+            return original
+        if start_seconds > 3.0:
+            return original
+
+        k = _norm_for_match(original)
+        if not k or k not in hook_words:
+            return original
+
+        # Warm yellow, bold, slight outline boost for "hook words".
+        return f"{{\\c&H0033D6FF&\\b1\\bord7}}{original}{{\\r}}"
 
     def _split_two_lines(parts: list[str], lens: list[int]) -> tuple[list[str], list[str]]:
         # split text parts into two lines, breaking overlong words if necessary
@@ -400,9 +522,12 @@ def write_word_level_ass_for_clip(
             if drift != 0:
                 scaled[-1] = max(1, scaled[-1] + drift)
 
-            parts = [f"{{\\k{scaled[i]}}}{chunk[i].word}" for i in range(len(chunk))]
+            parts = [
+                f"{{\\k{scaled[i]}}}" + _maybe_highlight_word(original=chunk[i].word, start_seconds=chunk[i].start_seconds)
+                for i in range(len(chunk))
+            ]
         else:
-            parts = [w.word for w in chunk]
+            parts = [_maybe_highlight_word(original=w.word, start_seconds=w.start_seconds) for w in chunk]
 
         lens = [len(w.word) for w in chunk]
         line1, line2 = _split_two_lines(parts, lens)
