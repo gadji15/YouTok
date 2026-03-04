@@ -9,7 +9,7 @@ from ..utils.ffprobe import probe_video
 from ..utils.subprocess import run
 from .face_tracking import estimate_face_center_x
 from .saliency import estimate_motion_center_x
-from .subtitle_placement import choose_subtitle_placement, measure_overlap_p95_for_video
+from .subtitle_placement import SubtitlePlacement, choose_subtitle_placement, measure_overlap_p95_for_video
 from .subtitles import write_srt_for_clip, write_stylized_ass_for_clip, write_word_level_ass_for_clip
 from .types import ClipCandidate, TranscriptSegment, WordTiming
 from .word_alignment import approximate_words_from_segments
@@ -120,6 +120,9 @@ def render_clips(
     target_fps: int = 30,
     enable_loudnorm: bool = False,
     word_timings: list[WordTiming] | None = None,
+    quality_gate_enabled: bool = False,
+    quality_gate_face_overlap_p95_threshold: float = 0.05,
+    quality_gate_max_attempts: int = 2,
 ) -> list[dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -233,6 +236,13 @@ def render_clips(
         except Exception:
             logger.exception("external_ass_generation_failed", clip_id=clip.clip_id)
 
+        clip_segments = [
+            s
+            for s in transcript_segments
+            if s.text.strip() and s.end_seconds > clip.start_seconds and s.start_seconds < clip.end_seconds
+        ]
+
+        placement = None
         if subtitles_enabled:
             placement = choose_subtitle_placement(
                 source_video=source_video,
@@ -243,12 +253,6 @@ def render_clips(
                 work_dir=clip_dir / "subtitle_placement",
                 logger=logger.bind(clip_id=clip.clip_id),
             )
-
-            clip_segments = [
-                s
-                for s in transcript_segments
-                if s.text.strip() and s.end_seconds > clip.start_seconds and s.start_seconds < clip.end_seconds
-            ]
 
             used_source = "stylized"
 
@@ -292,7 +296,7 @@ def render_clips(
 
             stats = _best_effort_log_ass_stats(ass_path=out_ass, clip_id=clip.clip_id, source=used_source)
 
-            # Persist placement diagnostics for later QA / scoring.
+            # Persist initial placement diagnostics for later QA / scoring.
             try:
                 metrics_path = clip_dir / "metrics.json"
                 payload = {
@@ -309,13 +313,13 @@ def render_clips(
                             "ui_score": getattr(placement, "ui_score", 0.0),
                         },
                         "ass_stats": stats,
+                        "render_attempts": [],
                     },
                 }
                 metrics_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             except Exception:
                 logger.exception("clip.metrics_write_failed", clip_id=clip.clip_id)
 
-            # Persist placement diagnostics for later QA / scoring
             # Safety net: if we ended up with a tiny number of very long Dialogue events,
             # regenerate using approximate timings (prevents "frozen" subtitles even if
             # upstream word timings are sparse/broken).
@@ -446,7 +450,7 @@ def render_clips(
         if subtitles_enabled:
             vf_parts.append(f"ass={_ffmpeg_filter_escape_path(out_ass)}")
 
-        ffmpeg_args: list[str] = [
+        ffmpeg_args_base: list[str] = [
             "ffmpeg",
             "-y",
             "-hide_banner",
@@ -458,17 +462,15 @@ def render_clips(
             str(source_video),
             "-t",
             str(duration),
-            "-vf",
-            ",".join(vf_parts),
         ]
 
         if enable_loudnorm:
-            ffmpeg_args += [
+            ffmpeg_args_base += [
                 "-af",
                 "loudnorm=I=-16:TP=-1.5:LRA=11",
             ]
 
-        ffmpeg_args += [
+        ffmpeg_args_base += [
             "-c:v",
             "libx264",
             "-profile:v",
@@ -490,45 +492,153 @@ def render_clips(
             "192k",
             "-movflags",
             "+faststart",
-            str(out_video),
         ]
 
-        run(
-            ffmpeg_args,
-            logger=logger.bind(clip_id=clip.clip_id),
-        )
+        # Quality gate rerender loop: if subtitles overlap faces/UI on the final video,
+        # regenerate the ASS with an alternative placement and re-render.
+        attempt_placements: list[tuple[int, int, int]] = []
+        if subtitles_enabled and placement is not None:
+            attempt_placements.append((placement.alignment, placement.x, placement.y))
 
-        if not out_video.exists() or out_video.stat().st_size <= 0:
-            raise RuntimeError(f"ffmpeg produced no output for {clip.clip_id}")
+            if quality_gate_enabled:
+                shift = int(max(1920 * 0.06, 100))
+                y_up = max(int(1920 * 0.10), placement.y - shift)
+                attempt_placements.append((2, 1080 // 2, y_up))
 
-        # Post-render overlap measurement on the final 9:16 clip.
-        if subtitles_enabled:
-            try:
+                top_margin = int(max(1920 * 0.08, 120))
+                attempt_placements.append((8, 1080 // 2, top_margin))
+
+        max_attempts = max(1, int(quality_gate_max_attempts))
+        attempt_placements = attempt_placements[: max_attempts]
+
+        def _write_ass_for_attempt(pl: tuple[int, int, int]) -> None:
+            # If we have a word-level ASS generator available, prefer it (precise placement).
+            if word_timings and len(word_timings) > 0:
+                write_word_level_ass_for_clip(
+                    clip_start_seconds=clip.start_seconds,
+                    clip_end_seconds=clip.end_seconds,
+                    words=word_timings,
+                    output_path=out_ass,
+                    placement=pl,
+                    template=subtitle_template,
+                )
+                return
+
+            approx = approximate_words_from_segments(segments=clip_segments)
+            if approx:
+                write_word_level_ass_for_clip(
+                    clip_start_seconds=clip.start_seconds,
+                    clip_end_seconds=clip.end_seconds,
+                    words=approx,
+                    output_path=out_ass,
+                    placement=pl,
+                    template=subtitle_template,
+                )
+                return
+
+            # Fallback: stylized ASS without explicit pos.
+            write_stylized_ass_for_clip(
+                clip_start_seconds=clip.start_seconds,
+                clip_end_seconds=clip.end_seconds,
+                segments=transcript_segments,
+                output_path=out_ass,
+                template=subtitle_template,
+            )
+
+        attempts_log: list[dict] = []
+
+        # Always render at least once.
+        if not attempt_placements:
+            vf_once = list(vf_parts)
+            ffmpeg_args = ffmpeg_args_base + ["-vf", ",".join(vf_once), str(out_video)]
+            run(ffmpeg_args, logger=logger.bind(clip_id=clip.clip_id, attempt=1))
+        else:
+            ok = False
+            last_face95 = 0.0
+            last_ui95 = 0.0
+
+            for attempt_idx, pl in enumerate(attempt_placements, start=1):
+                _write_ass_for_attempt(pl)
+
+                vf_once = [
+                    "scale=1080:1920:force_original_aspect_ratio=increase",
+                    crop_filter,
+                    f"fps={fps}",
+                ]
+                if subtitles_enabled:
+                    vf_once.append(f"ass={_ffmpeg_filter_escape_path(out_ass)}")
+
+                ffmpeg_args = ffmpeg_args_base + [
+                    "-vf",
+                    ",".join(vf_once),
+                    str(out_video),
+                ]
+
+                run(ffmpeg_args, logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx))
+
                 face95, ui95 = measure_overlap_p95_for_video(
                     video_path=out_video,
                     start_seconds=0.0,
                     end_seconds=float(duration),
-                    placement=placement,
+                    placement=SubtitlePlacement(alignment=pl[0], x=pl[1], y=pl[2]),
                     play_res_x=1080,
                     play_res_y=1920,
-                    work_dir=clip_dir / "overlap_final",
-                    logger=logger.bind(clip_id=clip.clip_id),
+                    work_dir=clip_dir / f"overlap_final_attempt_{attempt_idx}",
+                    logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx),
                     sample_fps=1,
                 )
 
+                last_face95 = face95
+                last_ui95 = ui95
+
+                passed = face95 <= float(quality_gate_face_overlap_p95_threshold)
+                attempts_log.append(
+                    {
+                        "attempt": attempt_idx,
+                        "placement": {"alignment": pl[0], "x": pl[1], "y": pl[2]},
+                        "face_overlap_ratio_p95": face95,
+                        "ui_overlap_ratio_p95": ui95,
+                        "passed": passed,
+                    }
+                )
+
+                if not quality_gate_enabled or passed:
+                    ok = True
+                    break
+
+            # If quality gate is enabled and we still failed, keep the last render but record failure.
+            if quality_gate_enabled and not ok:
+                logger.warning(
+                    "subtitles.quality_gate_failed",
+                    clip_id=clip.clip_id,
+                    face_overlap_ratio_p95=last_face95,
+                    threshold=quality_gate_face_overlap_p95_threshold,
+                )
+
+        if not out_video.exists() or out_video.stat().st_size <= 0:
+            raise RuntimeError(f"ffmpeg produced no output for {clip.clip_id}")
+
+        # Persist attempt log + final overlap metrics.
+        if subtitles_enabled:
+            try:
                 metrics_path = clip_dir / "metrics.json"
                 if metrics_path.exists():
                     raw = json.loads(metrics_path.read_text(encoding="utf-8"))
                 else:
                     raw = {"clip_id": clip.clip_id, "subtitles": {"enabled": True}}
 
-                raw.setdefault("subtitles", {}).setdefault("final_overlap", {})
-                raw["subtitles"]["final_overlap"] = {
-                    "measured_on": "rendered_video",
-                    "sample_fps": 1,
-                    "face_overlap_ratio_p95": face95,
-                    "ui_overlap_ratio_p95": ui95,
-                }
+                raw.setdefault("subtitles", {}).setdefault("render_attempts", [])
+                raw["subtitles"]["render_attempts"] = attempts_log
+
+                if attempts_log:
+                    last = attempts_log[-1]
+                    raw.setdefault("subtitles", {}).setdefault("final_overlap", {})
+                    raw["subtitles"]["final_overlap"] = {
+                        "measured_on": "rendered_video",
+                        "sample_fps": 1,
+                        "face_overlap_ratio_p95": last.get("face_overlap_ratio_p95", 0.0),
+                        "ui_overlap_ratio_p95": last.get("ui_overlap_ratio_p95", 0.0),
+                    }
 
                 metrics_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             except Exception:

@@ -109,6 +109,26 @@ class Settings(BaseSettings):
         description="If true, apply ffmpeg loudnorm to audio during render",
     )
 
+    # Quality gate (Sprint 1): auto-correct subtitle placement if it overlaps faces/UI.
+    quality_gate_enabled: bool = Field(
+        False,
+        description="If true, re-render clips when subtitle face overlap exceeds the threshold",
+    )
+
+    quality_gate_face_overlap_p95_threshold: float = Field(
+        0.05,
+        ge=0.0,
+        le=1.0,
+        description="Max allowed p95 face overlap ratio for subtitles (measured on final rendered video)",
+    )
+
+    quality_gate_max_attempts: int = Field(
+        2,
+        ge=1,
+        le=5,
+        description="Max render attempts per clip when quality gate is enabled",
+    )
+
     callback_timeout_seconds: float = Field(20.0, ge=1)
 
     callback_max_retries: int = Field(3, ge=0, le=10)

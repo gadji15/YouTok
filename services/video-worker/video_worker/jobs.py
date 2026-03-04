@@ -313,6 +313,9 @@ def process_job(
             target_fps=settings.target_fps,
             enable_loudnorm=settings.enable_loudnorm,
             word_timings=words,
+            quality_gate_enabled=settings.quality_gate_enabled,
+            quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
+            quality_gate_max_attempts=settings.quality_gate_max_attempts,
         )
 
         clip_artifacts: list[ClipArtifact] = []
