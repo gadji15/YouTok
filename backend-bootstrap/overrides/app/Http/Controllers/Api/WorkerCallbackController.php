@@ -70,7 +70,44 @@ class WorkerCallbackController
             'artifacts.clips.*.subtitles_srt_path' => ['nullable', 'string'],
         ]);
 
-        $project = Project::query()->findOrFail($payload['project_id']);
+        $project = Project::query()->find($payload['project_id']);
+        if ($project === null) {
+            // If a user deletes a project while a worker job is still running, the worker may
+            // continue to send callbacks. Treat those as no-ops so the worker doesn't fail
+            // the whole render just because the project was removed.
+            PipelineEvent::log(
+                type: 'worker.callback.ignored',
+                message: 'project not found',
+                payload: [
+                    'job_id' => $payload['job_id'],
+                    'project_id' => $payload['project_id'],
+                    'status' => $payload['status'],
+                ],
+            );
+
+            Log::info('worker.callback', [
+                'project_id' => $payload['project_id'],
+                'job_id' => $payload['job_id'],
+                'status' => $payload['status'],
+                'ignored' => true,
+                'reason' => 'project not found',
+            ]);
+
+            return response()->json(['ok' => true]);
+        }Project::query()->find($payload['project_id']);
+        if ($project === null) {
+            // The user may have deleted the project while a worker job was still running.
+            // Acknowledge the callback to avoid failing the worker job on a 404.
+            Log::warning('worker.callback.project_not_found', [
+                'project_id' => $payload['project_id'],
+                'job_id' => $payload['job_id'],
+                'status' => $payload['status'],
+                'stage' => $payload['stage'] ?? null,
+                'progress_percent' => $payload['progress_percent'] ?? null,
+            ]);
+
+            return response()->json(['ok' => true]);
+        }
 
         PipelineEvent::log(
             type: 'worker.callback',

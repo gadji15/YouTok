@@ -241,4 +241,32 @@ class WorkerCallbackTest extends TestCase
         $this->assertSame(100, $project->progress_percent);
         $this->assertSame('Done', $project->last_log_message);
     }
+
+    public function test_worker_callback_returns_ok_when_project_was_deleted(): void
+    {
+        config()->set('admin.video_worker_callback_secret', 'cb-secret');
+
+        $project = Project::query()->create([
+            'name' => 'ToDelete',
+            'youtube_url' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+            'status' => ProjectStatus::processing,
+            'worker_job_id' => 'job-1',
+        ]);
+
+        $projectId = (string) $project->id;
+        $project->delete();
+
+        $this->withHeader('X-Callback-Secret', 'cb-secret')
+            ->postJson('/api/worker/callback', [
+                'job_id' => 'job-1',
+                'project_id' => $projectId,
+                'status' => 'processing',
+                'stage' => 'transcribe',
+                'progress_percent' => 50,
+                'message' => 'Transcribing audio',
+            ])
+            ->assertOk();
+
+        $this->assertSame(0, Project::query()->where('id', $projectId)->count());
+    }
 }
