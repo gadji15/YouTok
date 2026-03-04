@@ -55,9 +55,14 @@ class SubmitVideoWorkerJob implements ShouldQueue
                 return;
             }
 
+            // The worker job may not start immediately (single worker / backlog).
+            // Mark the project as queued until we receive the first worker callback.
             $project->forceFill([
                 'worker_job_id' => $jobId,
-                'status' => ProjectStatus::processing,
+                'status' => ProjectStatus::queued,
+                'stage' => 'queued',
+                'progress_percent' => 0,
+                'last_log_message' => 'Queued for processing',
                 'error' => null,
             ])->save();
 
