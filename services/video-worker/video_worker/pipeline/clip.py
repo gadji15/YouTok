@@ -195,10 +195,10 @@ def render_clips(
 
         tool_ass_generated = False
 
-        # Attempt to produce word-level timings and an ASS via the new tools.
+        # Attempt to produce word-level timings and an ASS via the bundled tools.
+        # NOTE: This runs inside the worker image where the package lives at /app/video_worker.
         try:
-            repo_root = Path(__file__).resolve().parents[4]
-            tools_dir = repo_root / "services" / "video-worker" / "video_worker" / "tools"
+            tools_dir = Path(__file__).resolve().parents[1] / "tools"
 
             audio_wav = clip_dir / "audio.wav"
             words_json = clip_dir / "words.json"
@@ -249,16 +249,28 @@ def render_clips(
 
         placement = None
         if subtitles_enabled:
-            placement = choose_subtitle_placement(
-                source_video=source_video,
-                clip_start_seconds=clip.start_seconds,
-                clip_end_seconds=clip.end_seconds,
-                play_res_x=1080,
-                play_res_y=1920,
-                work_dir=clip_dir / "subtitle_placement",
-                logger=logger.bind(clip_id=clip.clip_id),
-                ui_safe_ymin=ui_safe_ymin,
-            )
+            try:
+                placement = choose_subtitle_placement(
+                    source_video=source_video,
+                    clip_start_seconds=clip.start_seconds,
+                    clip_end_seconds=clip.end_seconds,
+                    play_res_x=1080,
+                    play_res_y=1920,
+                    work_dir=clip_dir / "subtitle_placement",
+                    logger=logger.bind(clip_id=clip.clip_id),
+                    ui_safe_ymin=ui_safe_ymin,
+                )
+            except TypeError:
+                # Best-effort: older worker images may not support ui_safe_ymin.
+                placement = choose_subtitle_placement(
+                    source_video=source_video,
+                    clip_start_seconds=clip.start_seconds,
+                    clip_end_seconds=clip.end_seconds,
+                    play_res_x=1080,
+                    play_res_y=1920,
+                    work_dir=clip_dir / "subtitle_placement",
+                    logger=logger.bind(clip_id=clip.clip_id),
+                )
 
             used_source = "stylized"
 
