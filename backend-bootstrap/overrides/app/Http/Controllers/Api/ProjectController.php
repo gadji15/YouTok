@@ -88,6 +88,7 @@ class ProjectController
 
         return response()->json([
             'id' => (string) $project->id,
+            'status' => $project->status->value,
         ], 201);
     }
 
