@@ -341,6 +341,38 @@ def write_word_level_ass_for_clip(
         # Best-effort keyword selection for the opening hook.
         # We keep it deterministic and simple (no ML here).
         hook_window_seconds = 3.0
+
+        power_words = {
+            # EN
+            "secret",
+            "shocking",
+            "insane",
+            "unbelievable",
+            "truth",
+            "warning",
+            "listen",
+            "imagine",
+            "story",
+            "miracle",
+            # FR
+            "incroyable",
+            "dingue",
+            "vérité",
+            "verite",
+            "attention",
+            "écoute",
+            "ecoute",
+            "histoire",
+            "miracle",
+            # Common transliterations / niche words (kept minimal)
+            "subhanallah",
+            "allah",
+            "quran",
+            "coran",
+            "hadith",
+            "sunnah",
+        }
+
         stop = {
             "the",
             "a",
@@ -424,11 +456,17 @@ def write_word_level_ass_for_clip(
             raw = _norm_for_match(w.word)
             if not raw or raw in stop:
                 continue
-            if len(raw) < 4:
-                continue
 
-            # Score: prefer earlier + longer.
-            score = (1.0 / (0.35 + float(w.start_seconds))) + (min(12, len(raw)) / 8.0)
+            score = 0.0
+            if raw in power_words:
+                score += 3.0
+
+            if len(raw) >= 4:
+                score += min(12, len(raw)) / 8.0
+
+            # Prefer earlier
+            score += 1.0 / (0.35 + float(w.start_seconds))
+
             scored[raw] = max(scored.get(raw, 0.0), score)
 
         top = sorted(scored.items(), key=lambda kv: kv[1], reverse=True)[:5]
@@ -436,18 +474,13 @@ def write_word_level_ass_for_clip(
 
     hook_words = _pick_hook_words() if cinematic else set()
 
-    def _maybe_highlight_word(*, original: str, start_seconds: float) -> str:
+    def _is_hook_word(word: str, start_seconds: float) -> bool:
         if not cinematic:
-            return original
+            return False
         if start_seconds > 3.0:
-            return original
-
-        k = _norm_for_match(original)
-        if not k or k not in hook_words:
-            return original
-
-        # Warm yellow, bold, slight outline boost for "hook words".
-        return f"{{\\c&H0033D6FF&\\b1\\bord7}}{original}{{\\r}}"
+            return False
+        k = _norm_for_match(word)
+        return bool(k) and k in hook_words
 
     def _split_two_lines(parts: list[str], lens: list[int]) -> tuple[list[str], list[str]]:
         # split text parts into two lines, breaking overlong words if necessary
@@ -509,6 +542,16 @@ def write_word_level_ass_for_clip(
 
         cinematic = template in {"cinematic", "cinematic_karaoke"}
 
+        highlighted = 0
+        max_highlights_per_event = 3
+
+        def _format_word(*, w: WordTiming, prefix: str = "") -> str:
+            nonlocal highlighted
+            if _is_hook_word(w.word, w.start_seconds) and highlighted < max_highlights_per_event:
+                highlighted += 1
+                return prefix + f"{{\\c&H0033D6FF&\\b1\\bord7}}{w.word}{{\\r}}"
+            return prefix + w.word
+
         if karaoke_enabled:
             dur_cs_total = max(1, int(round((end - start) * 100)))
             raw = [max(1, int(round((w.end_seconds - w.start_seconds) * 100))) for w in chunk]
@@ -522,12 +565,9 @@ def write_word_level_ass_for_clip(
             if drift != 0:
                 scaled[-1] = max(1, scaled[-1] + drift)
 
-            parts = [
-                f"{{\\k{scaled[i]}}}" + _maybe_highlight_word(original=chunk[i].word, start_seconds=chunk[i].start_seconds)
-                for i in range(len(chunk))
-            ]
+            parts = [_format_word(w=chunk[i], prefix=f"{{\\k{scaled[i]}}}") for i in range(len(chunk))]
         else:
-            parts = [_maybe_highlight_word(original=w.word, start_seconds=w.start_seconds) for w in chunk]
+            parts = [_format_word(w=w) for w in chunk]
 
         lens = [len(w.word) for w in chunk]
         line1, line2 = _split_two_lines(parts, lens)

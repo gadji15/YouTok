@@ -128,9 +128,9 @@ def test_write_word_level_ass_cinematic_karaoke_contains_cinematic_tags(tmp_path
     out = tmp_path / "subtitles_word_cinematic.ass"
 
     words = [
-        WordTiming(word="amazing", start_seconds=0.0, end_seconds=0.6, confidence=1.0),
-        WordTiming(word="story", start_seconds=0.6, end_seconds=1.2, confidence=1.0),
-        WordTiming(word="today", start_seconds=1.2, end_seconds=2.0, confidence=1.0),
+        WordTiming(word="subhanallah", start_seconds=0.0, end_seconds=0.6, confidence=1.0),
+        WordTiming(word="secret", start_seconds=0.6, end_seconds=1.2, confidence=1.0),
+        WordTiming(word="story", start_seconds=1.2, end_seconds=2.0, confidence=1.0),
     ]
 
     write_word_level_ass_for_clip(
