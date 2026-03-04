@@ -217,6 +217,19 @@
       "ready": "Prêt",
       "failed": "En erreur"
     },
+    "qualityFilters": {
+      "all": "Qualité : Tous",
+      "ok": "Qualité : OK",
+      "needsReview": "Qualité : À vérifier"
+    },
+    "sort": {
+      "created": "Tri : Récent",
+      "quality": "Tri : Qualité"
+    },
+    "quality": {
+      "ok": "OK",
+      "needsReview": "À vérifier"
+    },
     "view": {
       "table": "Tableau",
       "cards": "Cartes"
@@ -225,6 +238,7 @@
       "clip": "Clip",
       "project": "Projet",
       "status": "Statut",
+      "quality": "Qualité",
       "duration": "Durée",
       "created": "Créé"
     },
