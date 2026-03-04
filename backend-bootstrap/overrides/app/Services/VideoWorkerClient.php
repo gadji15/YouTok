@@ -53,6 +53,24 @@ class VideoWorkerClient
         return $jobId;
     }
 
+    public function cancelJob(string $jobId): void
+    {
+        $baseUrl = (string) config('admin.video_worker_base_url', '');
+        if ($baseUrl === '' || $jobId === '') {
+            return;
+        }
+
+        $request = Http::timeout(10);
+
+        $apiKey = (string) config('admin.video_worker_api_key', '');
+        if ($apiKey !== '') {
+            $request = $request->withToken($apiKey);
+        }
+
+        // Best-effort: if the job already finished or the worker is down, we don't block deletion.
+        $request->delete(rtrim($baseUrl, '/').'/jobs/'.urlencode($jobId));
+    }
+
     private function post(PendingRequest $request, string $url, array $payload)
     {
         $response = $request->post($url, $payload);

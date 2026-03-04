@@ -8,6 +8,7 @@ use App\Enums\ProjectStatus;
 use App\Jobs\SubmitVideoWorkerJob;
 use App\Models\PipelineEvent;
 use App\Models\Project;
+use App\Services\VideoWorkerClient;
 use App\Support\SharedStorage;
 use App\Support\Youtube;
 use Illuminate\Http\JsonResponse;
@@ -162,9 +163,14 @@ class ProjectController
         ]);
     }
 
-    public function destroy(Request $request, Project $project): Response
+    public function destroy(Request $request, Project $project, VideoWorkerClient $videoWorker): Response
     {
         $project->load(['clips']);
+
+        // Best-effort cancellation to avoid leaving orphan jobs in the worker queue.
+        if (is_string($project->worker_job_id) && $project->worker_job_id !== '') {
+            $videoWorker->cancelJob($project->worker_job_id);
+        }
 
         SharedStorage::deleteFile($project->source_video_path);
         SharedStorage::deleteFile($project->audio_path);

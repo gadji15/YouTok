@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Header
+from rq.job import Job
 
 from .callback import JobCallbackPayload, JobStatus, post_callback
 from .config import get_settings
@@ -15,6 +16,7 @@ from .rq_queue import get_queue
 try:
     from .observability import configure_metrics, configure_sentry
 except ModuleNotFoundError:
+
     def configure_sentry(*, dsn: str, traces_sample_rate: float = 0.0) -> None:
         return
 
@@ -38,6 +40,12 @@ def create_app() -> FastAPI:
     if getattr(settings, "metrics_enabled", False):
         configure_metrics(app=app)
 
+    def require_api_key(authorization: str | None) -> None:
+        if settings.api_key:
+            expected = f"Bearer {settings.api_key}"
+            if not authorization or authorization.strip() != expected:
+                raise HTTPException(status_code=401, detail="unauthorized")
+
     @app.get("/health")
     def health() -> dict:
         try:
@@ -49,10 +57,7 @@ def create_app() -> FastAPI:
 
     @app.post("/jobs", response_model=JobCreateResponse)
     def create_job(req: JobCreateRequest, authorization: str | None = Header(default=None)) -> JobCreateResponse:
-        if settings.api_key:
-            expected = f"Bearer {settings.api_key}"
-            if not authorization or authorization.strip() != expected:
-                raise HTTPException(status_code=401, detail="unauthorized")
+        require_api_key(authorization)
 
         if settings.callback_host_allowlist:
             allowed = {h.strip() for h in settings.callback_host_allowlist.split(",") if h.strip()}
@@ -99,6 +104,25 @@ def create_app() -> FastAPI:
 
         logger.info("job.enqueued", job_id=job_id, project_id=req.project_id)
         return JobCreateResponse(job_id=job_id)
+
+    @app.delete("/jobs/{job_id}")
+    def cancel_job(job_id: str, authorization: str | None = Header(default=None)) -> dict:
+        require_api_key(authorization)
+
+        # Best-effort cancellation. If the job is queued, remove it from the queue.
+        # If it's already running, we set a cancel flag in Redis and rely on the worker
+        # to stop at the next checkpoint.
+        r = get_redis()
+        r.setex(f"video-worker:cancel:{job_id}", 60 * 60, "1")
+
+        try:
+            job = Job.fetch(job_id, connection=r)
+            job.cancel()
+        except Exception:
+            # If the job doesn't exist (already finished/cleaned), that's fine.
+            pass
+
+        return {"ok": True, "job_id": job_id}
 
     return app
 
