@@ -602,18 +602,32 @@ def render_clips(
 
                 run(ffmpeg_args, logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx))
 
-                face95, ui95 = measure_overlap_p95_for_video(
-                    video_path=out_video,
-                    start_seconds=0.0,
-                    end_seconds=float(duration),
-                    placement=SubtitlePlacement(alignment=pl[0], x=pl[1], y=pl[2]),
-                    play_res_x=1080,
-                    play_res_y=1920,
-                    work_dir=clip_dir / f"overlap_final_attempt_{attempt_idx}",
-                    logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx),
-                    sample_fps=1,
-                    ui_safe_ymin=ui_safe_ymin,
-                )
+                try:
+                    face95, ui95 = measure_overlap_p95_for_video(
+                        video_path=out_video,
+                        start_seconds=0.0,
+                        end_seconds=float(duration),
+                        placement=SubtitlePlacement(alignment=pl[0], x=pl[1], y=pl[2]),
+                        play_res_x=1080,
+                        play_res_y=1920,
+                        work_dir=clip_dir / f"overlap_final_attempt_{attempt_idx}",
+                        logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx),
+                        sample_fps=1,
+                        ui_safe_ymin=ui_safe_ymin,
+                    )
+                except TypeError:
+                    # Best-effort: older worker images may not support ui_safe_ymin.
+                    face95, ui95 = measure_overlap_p95_for_video(
+                        video_path=out_video,
+                        start_seconds=0.0,
+                        end_seconds=float(duration),
+                        placement=SubtitlePlacement(alignment=pl[0], x=pl[1], y=pl[2]),
+                        play_res_x=1080,
+                        play_res_y=1920,
+                        work_dir=clip_dir / f"overlap_final_attempt_{attempt_idx}",
+                        logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx),
+                        sample_fps=1,
+                    )
 
                 last_face95 = face95
                 last_ui95 = ui95
