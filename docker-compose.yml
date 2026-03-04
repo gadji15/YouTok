@@ -59,7 +59,8 @@ services:
     environment:
       LARAVEL_BASE_URL: http://backend:8000
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-change-me}
-      NODE_ENV: production
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: "1"
     depends_on:
       - backend
 
