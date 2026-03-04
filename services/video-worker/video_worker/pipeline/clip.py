@@ -305,6 +305,7 @@ def render_clips(
                             "x": placement.x,
                             "y": placement.y,
                             "face_overlap_ratio": getattr(placement, "face_overlap_ratio", 0.0),
+                            "ui_overlap_ratio": getattr(placement, "ui_overlap_ratio", 0.0),
                             "ui_score": getattr(placement, "ui_score", 0.0),
                         },
                         "ass_stats": stats,
