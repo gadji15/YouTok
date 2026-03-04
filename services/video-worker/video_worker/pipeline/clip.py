@@ -8,7 +8,7 @@ import structlog
 from ..utils.ffprobe import probe_video
 from ..utils.subprocess import run
 from .face_tracking import estimate_face_center_x
-from .saliency import estimate_motion_center_x
+from .saliency import estimate_edge_center_x_with_confidence, estimate_motion_center_x_with_confidence
 from .subtitle_placement import SubtitlePlacement, choose_subtitle_placement, measure_overlap_p95_for_video
 from .subtitles import write_srt_for_clip, write_stylized_ass_for_clip, write_word_level_ass_for_clip
 from .types import ClipCandidate, TranscriptSegment, WordTiming
@@ -59,12 +59,32 @@ def _estimate_best_center_x_rel(
     if face_x is not None:
         return face_x
 
-    return estimate_motion_center_x(
+    edge = estimate_edge_center_x_with_confidence(
         video_path=video_path,
         start_seconds=start_seconds,
         end_seconds=end_seconds,
-        work_dir=work_dir,
+        work_dir=work_dir / "edge",
     )
+
+    motion = estimate_motion_center_x_with_confidence(
+        video_path=video_path,
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+        work_dir=work_dir / "motion",
+    )
+
+    if edge is not None and motion is not None:
+        edge_x, edge_conf = edge
+        motion_x, motion_conf = motion
+        return edge_x if edge_conf >= motion_conf else motion_x
+
+    if edge is not None:
+        return float(edge[0])
+
+    if motion is not None:
+        return float(motion[0])
+
+    return None
 
 
 def _ema_smooth(values: list[float], alpha: float) -> list[float]:

@@ -93,8 +93,12 @@ class ProjectController
 
     public function show(Request $request, Project $project): JsonResponse
     {
+        $clipsQuery = $project->segmentation_mode === 'chapters'
+            ? fn ($query) => $query->orderBy('start_seconds')->orderBy('created_at')
+            : static fn ($query) => $query->orderByDesc('score')->orderByDesc('created_at');
+
         $project->load([
-            'clips' => static fn ($query) => $query->orderByDesc('score')->orderByDesc('created_at'),
+            'clips' => $clipsQuery,
             'pipelineEvents' => static fn ($query) => $query->latest()->limit(200),
         ]);
 
