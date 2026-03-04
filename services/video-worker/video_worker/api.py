@@ -76,6 +76,7 @@ def create_app() -> FastAPI:
             str(req.callback_url),
             req.callback_secret,
             req.language,
+            req.segmentation_mode,
             req.subtitles_enabled,
             req.subtitle_template,
             req.clip_min_seconds,

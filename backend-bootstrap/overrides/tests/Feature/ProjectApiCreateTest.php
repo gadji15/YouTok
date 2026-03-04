@@ -31,6 +31,7 @@ class ProjectApiCreateTest extends TestCase
                 'clip_min_seconds' => 60,
                 'clip_max_seconds' => 180,
                 'subtitle_template' => 'modern',
+                'segmentation_mode' => 'chapters',
             ])
             ->assertCreated();
 
@@ -43,6 +44,7 @@ class ProjectApiCreateTest extends TestCase
         $this->assertSame(60, $project->clip_min_seconds);
         $this->assertSame(180, $project->clip_max_seconds);
         $this->assertSame('modern', $project->subtitle_template);
+        $this->assertSame('chapters', $project->segmentation_mode);
 
         $this->assertTrue(PipelineEvent::query()
             ->where('project_id', $projectId)

@@ -17,6 +17,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [language, setLanguage] = useState<'fr' | 'en'>('fr');
+  const [segmentationMode, setSegmentationMode] = useState<'viral' | 'chapters'>('viral');
   const [clipLength, setClipLength] = useState('180');
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
 
@@ -56,6 +57,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
         clip_min_seconds: 60,
         clip_max_seconds: clipMaxSeconds,
         subtitle_template: 'modern',
+        segmentation_mode: segmentationMode,
       }),
     });
 
@@ -148,6 +150,17 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
             <Select value={language} onChange={(e) => setLanguage(e.target.value as 'fr' | 'en')}>
               <option value="fr">FR</option>
               <option value="en">EN</option>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.segmentationLabel')}</label>
+            <Select
+              value={segmentationMode}
+              onChange={(e) => setSegmentationMode(e.target.value as 'viral' | 'chapters')}
+            >
+              <option value="viral">{t('form.segmentationViral')}</option>
+              <option value="chapters">{t('form.segmentationChapters')}</option>
             </Select>
           </div>
 

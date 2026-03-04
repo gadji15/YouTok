@@ -10,6 +10,7 @@ from .callback import ClipArtifact, JobArtifacts, JobCallbackPayload, JobStatus,
 from .config import get_settings
 from .logging import get_logger
 from .pipeline.audio import extract_audio_wav
+from .pipeline.chapters import build_chapter_clips, build_sequential_clips, get_youtube_chapters
 from .pipeline.clip import render_clips
 from .pipeline.context import JobContext
 from .pipeline.download import download_youtube_video
@@ -24,6 +25,7 @@ from .pipeline.word_alignment import (
 )
 from .redis_conn import get_redis
 from .utils.errors import format_exception_short
+from .utils.ffprobe import probe_video
 
 
 class JobCancelledError(RuntimeError):
@@ -90,6 +92,7 @@ def process_job(
     callback_url: str,
     callback_secret: str,
     language: str | None = None,
+    segmentation_mode: str | None = None,
     subtitles_enabled: bool | None = None,
     subtitle_template: str | None = None,
     clip_min_seconds: float | None = None,
@@ -99,12 +102,18 @@ def process_job(
     settings = get_settings()
     logger = get_logger(service="video-worker", job_id=job_id, project_id=project_id)
 
+    effective_segmentation_mode = (segmentation_mode or "viral").strip().lower()
+
     effective_min_seconds = settings.clip_min_seconds if clip_min_seconds is None else float(clip_min_seconds)
     effective_max_seconds = settings.clip_max_seconds if clip_max_seconds is None else float(clip_max_seconds)
 
-    # Product constraint: clips must be 1–3 minutes.
-    effective_min_seconds = max(60.0, effective_min_seconds)
-    effective_max_seconds = max(effective_min_seconds, min(180.0, effective_max_seconds))
+    # Product constraint (viral mode): clips must be 1–3 minutes.
+    if effective_segmentation_mode == "viral":
+        effective_min_seconds = max(60.0, effective_min_seconds)
+        effective_max_seconds = max(effective_min_seconds, min(180.0, effective_max_seconds))
+    else:
+        # Chapter/slice mode still uses clip_max_seconds as the slice size (<= 3 min).
+        effective_max_seconds = max(1.0, min(180.0, effective_max_seconds))
 
     effective_max_clips = settings.max_clips if max_clips is None else int(max_clips)
     effective_subtitles_enabled = (
@@ -250,36 +259,67 @@ def process_job(
 
         current_stage = "segment"
         current_progress = 70
+
+        used_chapters = False
+
+        segment_message = "Selecting clip candidates"
+        if effective_segmentation_mode == "chapters":
+            segment_message = "Building chapters/slices"
+
         _best_effort_progress_callback(
             ctx=ctx,
             stage=current_stage,
             progress_percent=current_progress,
-            message="Selecting clip candidates",
+            message=segment_message,
             timeout_seconds=settings.callback_timeout_seconds,
             max_retries=settings.callback_max_retries,
             retry_backoff_seconds=settings.callback_retry_backoff_seconds,
             logger=logger,
         )
-        clips = segment_candidates(
-            segments=segments,
-            min_seconds=effective_min_seconds,
-            max_seconds=effective_max_seconds,
-            max_clips=effective_max_clips,
-            audio_path=ctx.audio_path,
-            video_path=ctx.source_video_path,
-            words=words,
-            language=language,
-        )
+
+        if effective_segmentation_mode == "chapters":
+            duration_seconds = float(probe_video(ctx.source_video_path).duration_seconds)
+
+            chapters = get_youtube_chapters(
+                youtube_url=ctx.youtube_url,
+                logger=logger,
+                video_path=ctx.source_video_path,
+            )
+
+            if chapters:
+                used_chapters = True
+                clips = build_chapter_clips(chapters=chapters, segments=segments)
+            else:
+                clips = build_sequential_clips(
+                    duration_seconds=duration_seconds,
+                    max_seconds=effective_max_seconds,
+                )
+        else:
+            clips = segment_candidates(
+                segments=segments,
+                min_seconds=effective_min_seconds,
+                max_seconds=effective_max_seconds,
+                max_clips=effective_max_clips,
+                audio_path=ctx.audio_path,
+                video_path=ctx.source_video_path,
+                words=words,
+                language=language,
+            )
 
         raise_if_cancelled()
 
         current_stage = "titles"
         current_progress = 80
+
+        titles_message = "Generating viral titles"
+        if effective_segmentation_mode == "chapters":
+            titles_message = "Generating titles"
+
         _best_effort_progress_callback(
             ctx=ctx,
             stage=current_stage,
             progress_percent=current_progress,
-            message="Generating viral titles",
+            message=titles_message,
             timeout_seconds=settings.callback_timeout_seconds,
             max_retries=settings.callback_max_retries,
             retry_backoff_seconds=settings.callback_retry_backoff_seconds,
@@ -306,7 +346,10 @@ def process_job(
             title_payload = res.to_payload()
             title_candidates_by_clip_id[c.clip_id] = title_payload
 
-            best_title = res.candidates[0].title if res.candidates else c.title
+            if used_chapters and c.title:
+                best_title = c.title
+            else:
+                best_title = res.candidates[0].title if res.candidates else c.title
 
             updated_clips.append(
                 type(c)(

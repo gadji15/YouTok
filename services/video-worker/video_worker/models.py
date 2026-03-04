@@ -13,6 +13,8 @@ class JobCreateRequest(BaseModel):
 
     language: Literal["fr", "en"] | None = None
 
+    segmentation_mode: Literal["viral", "chapters"] = "viral"
+
     # Overrides. If omitted, the worker falls back to environment defaults.
     subtitles_enabled: bool = True
     subtitle_template: str | None = None

@@ -336,7 +336,7 @@ def compute_face_presence_score(
             return None
 
         detector = mp.solutions.face_detection.FaceDetection(
-            model_selection=0, min_detection_confidence=0.5
+            model_selection=1, min_detection_confidence=0.5
         )
 
         total = 0

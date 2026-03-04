@@ -59,6 +59,7 @@ class ProjectController
             'clip_min_seconds' => ['sometimes', 'integer', 'min:60', 'max:180'],
             'clip_max_seconds' => ['sometimes', 'integer', 'min:60', 'max:180'],
             'subtitle_template' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'segmentation_mode' => ['sometimes', 'nullable', 'in:viral,chapters'],
         ]);
 
         $clipMin = (int) ($data['clip_min_seconds'] ?? 60);
@@ -77,6 +78,7 @@ class ProjectController
             'clip_min_seconds' => $clipMin,
             'clip_max_seconds' => $clipMax,
             'subtitle_template' => $request->input('subtitle_template'),
+            'segmentation_mode' => $request->input('segmentation_mode') ?? 'viral',
             'status' => ProjectStatus::queued,
         ]);
 
@@ -112,6 +114,7 @@ class ProjectController
                 'clip_min_seconds' => (int) $project->clip_min_seconds,
                 'clip_max_seconds' => (int) $project->clip_max_seconds,
                 'subtitle_template' => $project->subtitle_template,
+                'segmentation_mode' => $project->segmentation_mode ?? 'viral',
             ],
 
             'artifacts' => [
