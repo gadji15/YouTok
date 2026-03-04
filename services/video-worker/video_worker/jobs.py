@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import json
 import structlog
 
 from .callback import ClipArtifact, JobArtifacts, JobCallbackPayload, JobStatus, post_callback
@@ -375,9 +376,8 @@ def process_job(
             artifacts=artifacts,
         )
 
-        post_callback(
-            callback_url=ctx.callback_url,
-            callback_secret=ctx.callback_secret,
+        _best_effort_callback(
+            ctx=ctx,
             payload=completed_payload,
             timeout_seconds=settings.callback_timeout_seconds,
             max_retries=settings.callback_max_retries,
