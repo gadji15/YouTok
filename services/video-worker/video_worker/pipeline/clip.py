@@ -210,8 +210,8 @@ def render_clips(
     source_info = probe_video(source_video)
 
     if effective_output_aspect == "source":
-        play_res_x = int(source_info.width)
-        play_res_y = int(source_info.height)
+        play_res_x = int(source_info.width) - (int(source_info.width) % 2)
+        play_res_y = int(source_info.height) - (int(source_info.height) % 2)
         effective_ui_safe_ymin = 1.0
     else:
         play_res_x = 1080

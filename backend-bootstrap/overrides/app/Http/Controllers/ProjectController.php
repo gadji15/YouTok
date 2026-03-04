@@ -75,7 +75,9 @@ class ProjectController extends Controller
         $this->authorize('view', $project);
 
         $project->load([
-            'clips' => fn ($q) => $q->orderBy('external_id'),
+            'clips' => $project->segmentation_mode === 'chapters'
+                ? fn ($q) => $q->orderBy('start_seconds')->orderBy('created_at')
+                : fn ($q) => $q->orderBy('external_id'),
             'pipelineEvents' => fn ($q) => $q->orderByDesc('created_at')->limit(50),
         ]);
 
