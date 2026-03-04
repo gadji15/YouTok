@@ -79,6 +79,7 @@ class ClipController
             'reason' => $clip->reason,
             'title' => $clip->title,
             'title_candidates' => $clip->title_candidates,
+            'quality_summary' => $clip->quality_summary,
             'video_path' => $clip->video_path,
             'subtitles_ass_path' => $clip->subtitles_ass_path,
             'subtitles_srt_path' => $clip->subtitles_srt_path,

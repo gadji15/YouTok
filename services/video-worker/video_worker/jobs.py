@@ -319,11 +319,41 @@ def process_job(
             ui_safe_ymin=settings.ui_safe_ymin,
         )
 
+        def _load_quality_summary(video_path: str | None) -> dict | None:
+            if not video_path:
+                return None
+
+            try:
+                metrics_path = Path(video_path).parent / "metrics.json"
+                if not metrics_path.exists():
+                    return None
+
+                raw = json.loads(metrics_path.read_text(encoding="utf-8"))
+                subs = raw.get("subtitles") or {}
+
+                final_overlap = subs.get("final_overlap")
+                attempts = subs.get("render_attempts")
+
+                return {
+                    "template": subs.get("template"),
+                    "ui_safe_ymin": subs.get("ui_safe_ymin"),
+                    "final_overlap": final_overlap,
+                    "attempts": attempts,
+                }
+            except Exception:
+                logger.exception("clip.quality_summary_read_failed")
+                return None
+
         clip_artifacts: list[ClipArtifact] = []
         for c in rendered:
             clip_id = str(c.get("clip_id") or "")
             if clip_id and clip_id in title_candidates_by_clip_id:
                 c = {**c, "title_candidates": title_candidates_by_clip_id[clip_id]}
+
+            q = _load_quality_summary(c.get("video_path"))
+            if q is not None:
+                c = {**c, "quality_summary": q}
+
             clip_artifacts.append(ClipArtifact(**c))
 
         artifacts = JobArtifacts(

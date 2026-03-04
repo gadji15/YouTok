@@ -133,6 +133,7 @@ export type ApiClipDetail = {
   reason: string | null;
   title: string | null;
   title_candidates?: ApiClipTitleCandidates | null;
+  quality_summary?: ApiClipQualitySummary | null;
   video_path: string | null;
   subtitles_ass_path: string | null;
   subtitles_srt_path: string | null;

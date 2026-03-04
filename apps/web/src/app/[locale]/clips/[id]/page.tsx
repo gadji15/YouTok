@@ -164,9 +164,17 @@ export default async function ClipDetailsPage({
                     ) : null}
                   </div>
                   {clip.title_candidates?.description ? (
-                    <div className="mt-2 text-xs text-[var(--text-muted)]">
+                    <p className="text-sm text-[var(--text-muted)]">
                       {clip.title_candidates.description}
-                    </div>
+                    </p>
+                  ) : null}
+
+                  {clip.quality_summary?.final_overlap?.face_overlap_ratio_p95 !== undefined ? (
+                    <p className="text-sm text-[var(--text-muted)]">
+                      Subtitle overlap p95: face=
+                      {clip.quality_summary.final_overlap.face_overlap_ratio_p95?.toFixed(3)} ui=
+                      {clip.quality_summary.final_overlap.ui_overlap_ratio_p95?.toFixed(3)}
+                    </p>
                   ) : null}
                   {clip.title_candidates?.hashtags?.length ? (
                     <div className="mt-2 flex flex-wrap gap-1">
