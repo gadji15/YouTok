@@ -9,7 +9,7 @@ from ..utils.ffprobe import probe_video
 from ..utils.subprocess import run
 from .face_tracking import estimate_face_center_x
 from .saliency import estimate_motion_center_x
-from .subtitle_placement import choose_subtitle_placement
+from .subtitle_placement import choose_subtitle_placement, measure_overlap_p95_for_video
 from .subtitles import write_srt_for_clip, write_stylized_ass_for_clip, write_word_level_ass_for_clip
 from .types import ClipCandidate, TranscriptSegment, WordTiming
 from .word_alignment import approximate_words_from_segments
@@ -500,6 +500,39 @@ def render_clips(
 
         if not out_video.exists() or out_video.stat().st_size <= 0:
             raise RuntimeError(f"ffmpeg produced no output for {clip.clip_id}")
+
+        # Post-render overlap measurement on the final 9:16 clip.
+        if subtitles_enabled:
+            try:
+                face95, ui95 = measure_overlap_p95_for_video(
+                    video_path=out_video,
+                    start_seconds=0.0,
+                    end_seconds=float(duration),
+                    placement=placement,
+                    play_res_x=1080,
+                    play_res_y=1920,
+                    work_dir=clip_dir / "overlap_final",
+                    logger=logger.bind(clip_id=clip.clip_id),
+                    sample_fps=1,
+                )
+
+                metrics_path = clip_dir / "metrics.json"
+                if metrics_path.exists():
+                    raw = json.loads(metrics_path.read_text(encoding="utf-8"))
+                else:
+                    raw = {"clip_id": clip.clip_id, "subtitles": {"enabled": True}}
+
+                raw.setdefault("subtitles", {}).setdefault("final_overlap", {})
+                raw["subtitles"]["final_overlap"] = {
+                    "measured_on": "rendered_video",
+                    "sample_fps": 1,
+                    "face_overlap_ratio_p95": face95,
+                    "ui_overlap_ratio_p95": ui95,
+                }
+
+                metrics_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            except Exception:
+                logger.exception("clip.final_overlap_write_failed", clip_id=clip.clip_id)
 
         rendered.append(
             {

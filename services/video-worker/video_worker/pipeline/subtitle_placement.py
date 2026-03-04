@@ -310,6 +310,52 @@ def _compute_overlap_metrics(
     return _p95(face_overlaps), _p95(ui_overlaps)
 
 
+def measure_overlap_p95_for_video(
+    *,
+    video_path: Path,
+    start_seconds: float,
+    end_seconds: float,
+    placement: SubtitlePlacement,
+    play_res_x: int,
+    play_res_y: int,
+    work_dir: Path,
+    logger: structlog.BoundLogger,
+    sample_fps: int = 1,
+) -> tuple[float, float]:
+    """Measure overlap p95 on a rendered clip.
+
+    This extracts frames from the provided video and runs face detection per frame.
+    It is best-effort (returns zeros when CV deps are missing).
+
+    Returns: (face_overlap_p95, ui_overlap_p95)
+    """
+
+    frames = _extract_frames(
+        video_path=video_path,
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+        work_dir=work_dir,
+        sample_fps=sample_fps,
+        scale_w=540,
+    )
+
+    if not frames:
+        return 0.0, 0.0
+
+    try:
+        box_h = int(play_res_y * 0.14)
+        return _compute_overlap_metrics(
+            frame_paths=frames,
+            placement=placement,
+            play_res_x=play_res_x,
+            play_res_y=play_res_y,
+            box_h_px=box_h,
+        )
+    except Exception:
+        logger.exception("subtitles.overlap_measure_failed")
+        return 0.0, 0.0
+
+
 def choose_subtitle_placement(
     *,
     source_video: Path,
