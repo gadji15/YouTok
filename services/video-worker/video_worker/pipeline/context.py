@@ -84,3 +84,7 @@ class JobContext:
     @property
     def source_thumbnail_path(self) -> Path:
         return self.project_artifacts_dir / "thumbnail.jpg"
+
+    @property
+    def pipeline_state_path(self) -> Path:
+        return self.project_artifacts_dir / "pipeline_state.json"

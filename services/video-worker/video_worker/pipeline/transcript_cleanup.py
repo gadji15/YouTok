@@ -85,6 +85,73 @@ def heuristic_cleanup_text(text: str, *, language: str) -> str:
     return text
 
 
+_WORD_RE = re.compile(r"\b[\w']+\b", re.UNICODE)
+
+try:
+    from spellchecker import SpellChecker as _SpellChecker  # type: ignore
+except Exception:  # pragma: no cover
+    _SpellChecker = None
+
+
+def _spellcheck_text(text: str, *, language: str) -> str:
+    """Best-effort spelling correction.
+
+    This is intentionally conservative:
+    - only corrects fully lowercase tokens
+    - skips short tokens and tokens with digits
+
+    If pyspellchecker isn't installed, returns the input unchanged.
+    """
+
+    if _SpellChecker is None:
+        return text
+
+    lang = (language or "en").strip().lower()
+    if lang not in {"fr", "en"}:
+        lang = "en"
+
+    sp = _SpellChecker(language=lang)
+
+    tokens = [m.group(0) for m in _WORD_RE.finditer(text or "")]
+    if not tokens:
+        return text
+
+    candidates = [t for t in tokens if t == t.lower() and t.isalpha() and len(t) >= 3]
+    if not candidates:
+        return text
+
+    unknown = sp.unknown(candidates)
+    if not unknown:
+        return text
+
+    replacements: dict[str, str] = {}
+    for w in unknown:
+        corr = sp.correction(w)
+        if not corr or not isinstance(corr, str):
+            continue
+        corr = corr.strip()
+        if not corr or corr == w:
+            continue
+        replacements[w] = corr
+
+    if not replacements:
+        return text
+
+    def _sub(m: re.Match[str]) -> str:
+        tok = m.group(0)
+        if tok in replacements:
+            return replacements[tok]
+        return tok
+
+    return _WORD_RE.sub(_sub, text)
+
+
+def spellcheck_cleanup_text(text: str, *, language: str) -> str:
+    # Heuristic cleanup first (remove fillers/repeats), then run conservative spellcheck.
+    cleaned = heuristic_cleanup_text(text, language=language)
+    return _spellcheck_text(cleaned, language=language)
+
+
 _OPENAI_PROMPT = """You are a transcription cleaner.
 
 Task:
@@ -216,14 +283,17 @@ def cleanup_transcript_segments(
         except Exception:
             logger.exception("transcript.cleanup.openai_failed_fallback_heuristic")
 
-    # Default: heuristic cleanup.
+    cleanup_fn = heuristic_cleanup_text
+    if provider_norm == "spellcheck":
+        cleanup_fn = spellcheck_cleanup_text
+
     out: list[TranscriptSegment] = []
     for s in segments:
         out.append(
             TranscriptSegment(
                 start_seconds=s.start_seconds,
                 end_seconds=s.end_seconds,
-                text=heuristic_cleanup_text(s.text, language=lang),
+                text=cleanup_fn(s.text, language=lang),
                 confidence=s.confidence,
             )
         )

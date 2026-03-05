@@ -43,7 +43,8 @@ def download_youtube_video(
 
     if output_path.exists() and output_path.stat().st_size > 0:
         logger.info("download.skip_existing", path=str(output_path))
-        _move_sidecars()
+        if metadata_json_path is not None or thumbnail_path is not None:
+            _move_sidecars()
         return output_path
 
     if output_path.exists() and output_path.stat().st_size == 0:

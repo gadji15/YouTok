@@ -32,6 +32,7 @@ from .redis_conn import get_redis
 from .utils.errors import format_exception_short
 from .utils.ffprobe import probe_video
 from .utils.files import atomic_write_text
+from .utils.retry import retry
 
 
 class JobCancelledError(RuntimeError):
@@ -76,8 +77,9 @@ def _best_effort_progress_callback(
 
     # Checkpoint (Part 2): persist the last known stage/progress so the pipeline can resume.
     try:
+        ctx.pipeline_state_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(
-            ctx.project_artifacts_dir / "pipeline_state.json",
+            ctx.pipeline_state_path,
             json.dumps(
                 {
                     "job_id": ctx.job_id,
@@ -186,6 +188,23 @@ def process_job(
             raise
         except Exception:
             return
+
+    def run_with_stage_retries(stage_name: str, fn):
+        def _wrapped():
+            raise_if_cancelled()
+            return fn()
+
+        def _should_retry(exc: Exception) -> bool:
+            return not isinstance(exc, JobCancelledError)
+
+        return retry(
+            _wrapped,
+            should_retry=_should_retry,
+            max_retries=settings.pipeline_stage_max_retries,
+            backoff_seconds=settings.pipeline_stage_retry_backoff_seconds,
+            logger=logger.bind(stage=stage_name),
+            log_event="pipeline_stage.retry",
+        )
 
     current_stage = "start"
     current_progress = 0
@@ -330,40 +349,45 @@ def process_job(
                 loaded_transcript = False
 
         if not loaded_transcript:
-            segments = transcribe_audio(
-                audio_path=ctx.audio_path,
-                model_name=settings.whisper_model,
-                logger=logger,
-                language=language,
-                initial_prompt=initial_prompt,
-                device=settings.whisper_device,
-                temperature=settings.whisper_temperature,
-                beam_size=settings.whisper_beam_size,
-                best_of=settings.whisper_best_of,
-            )
+            def _do_transcribe() -> list:
+                segs = transcribe_audio(
+                    audio_path=ctx.audio_path,
+                    model_name=settings.whisper_model,
+                    logger=logger,
+                    language=language,
+                    initial_prompt=initial_prompt,
+                    device=settings.whisper_device,
+                    temperature=settings.whisper_temperature,
+                    beam_size=settings.whisper_beam_size,
+                    best_of=settings.whisper_best_of,
+                )
 
-            segments = normalize_transcript_segments(segments=segments)
+                segs = normalize_transcript_segments(segments=segs)
 
-            segments = cleanup_transcript_segments(
-                segments=segments,
-                language=language,
-                provider=settings.transcript_cleanup_provider,
-                openai_api_key=settings.openai_api_key,
-                openai_model=settings.openai_model,
-                openai_base_url=settings.openai_base_url,
-                logger=logger,
-            )
+                segs = cleanup_transcript_segments(
+                    segments=segs,
+                    language=language,
+                    provider=settings.transcript_cleanup_provider,
+                    openai_api_key=settings.openai_api_key,
+                    openai_model=settings.openai_model,
+                    openai_base_url=settings.openai_base_url,
+                    logger=logger,
+                )
 
-            write_transcript_json(
-                segments=segments,
-                output_path=ctx.transcript_json_path,
-                meta={
-                    "model": settings.whisper_model,
-                    "requested_language": language,
-                    "initial_prompt": initial_prompt,
-                    "cleanup_provider": settings.transcript_cleanup_provider,
-                },
-            )
+                write_transcript_json(
+                    segments=segs,
+                    output_path=ctx.transcript_json_path,
+                    meta={
+                        "model": settings.whisper_model,
+                        "requested_language": language,
+                        "initial_prompt": initial_prompt,
+                        "cleanup_provider": settings.transcript_cleanup_provider,
+                    },
+                )
+
+                return segs
+
+            segments = run_with_stage_retries("transcribe", _do_transcribe)
 
         # Always (re)write SRT: cheap and ensures downstream consistency.
         write_srt(segments=segments, output_path=ctx.subtitles_srt_path)
@@ -397,18 +421,22 @@ def process_job(
                 logger.exception("align.load_failed_realign")
 
         if not loaded_words:
-            words = align_words_with_whisperx(
-                audio_path=ctx.audio_path,
-                segments=segments,
-                language=language,
-                logger=logger,
-                device=settings.whisper_device,
-            )
-            if words is None:
-                words = approximate_words_from_segments(segments=segments)
-                logger.info("align.fallback_approximate", word_count=len(words))
+            def _do_align():
+                w = align_words_with_whisperx(
+                    audio_path=ctx.audio_path,
+                    segments=segments,
+                    language=language,
+                    logger=logger,
+                    device=settings.whisper_device,
+                )
+                if w is None:
+                    w = approximate_words_from_segments(segments=segments)
+                    logger.info("align.fallback_approximate", word_count=len(w))
 
-            write_words_json(words=words, output_path=ctx.words_json_path)
+                write_words_json(words=w, output_path=ctx.words_json_path)
+                return w
+
+            words = run_with_stage_retries("align", _do_align)
 
         raise_if_cancelled()
 
@@ -581,13 +609,10 @@ def process_job(
             ]
         }
 
-        if not (ctx.segments_json_path.exists() and ctx.segments_json_path.stat().st_size > 0):
-            atomic_write_text(
-                ctx.segments_json_path,
-                json.dumps(segments_payload, ensure_ascii=False, indent=2),
-            )
-        else:
-            logger.info("segments.skip_existing", path=str(ctx.segments_json_path))
+        atomic_write_text(
+            ctx.segments_json_path,
+            json.dumps(segments_payload, ensure_ascii=False, indent=2),
+        )
 
         raise_if_cancelled()
 
@@ -644,25 +669,28 @@ def process_job(
             logger=logger,
         )
 
-        rendered = render_clips(
-            source_video=ctx.source_video_path,
-            transcript_segments=render_segments,
-            clips=clips,
-            output_dir=ctx.clips_dir,
-            logger=logger,
-            subtitles_enabled=effective_subtitles_enabled,
-            subtitle_template=effective_subtitle_template,
-            output_aspect=effective_output_aspect,
-            target_fps=settings.target_fps,
-            enable_loudnorm=settings.enable_loudnorm,
-            word_timings=render_word_timings,
-            word_timings_by_clip_id=render_word_timings_by_clip_id,
-            audio_override_by_clip_id=render_audio_override_by_clip_id,
-            quality_gate_enabled=settings.quality_gate_enabled,
-            quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
-            quality_gate_max_attempts=settings.quality_gate_max_attempts,
-            ui_safe_ymin=settings.ui_safe_ymin,
-        )
+        def _do_render():
+            return render_clips(
+                source_video=ctx.source_video_path,
+                transcript_segments=render_segments,
+                clips=clips,
+                output_dir=ctx.clips_dir,
+                logger=logger,
+                subtitles_enabled=effective_subtitles_enabled,
+                subtitle_template=effective_subtitle_template,
+                output_aspect=effective_output_aspect,
+                target_fps=settings.target_fps,
+                enable_loudnorm=settings.enable_loudnorm,
+                word_timings=render_word_timings,
+                word_timings_by_clip_id=render_word_timings_by_clip_id,
+                audio_override_by_clip_id=render_audio_override_by_clip_id,
+                quality_gate_enabled=settings.quality_gate_enabled,
+                quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
+                quality_gate_max_attempts=settings.quality_gate_max_attempts,
+                ui_safe_ymin=settings.ui_safe_ymin,
+            )
+
+        rendered = run_with_stage_retries("render_clips", _do_render)
 
         def _load_quality_summary(video_path: str | None) -> dict | None:
             if not video_path:
@@ -720,6 +748,24 @@ def process_job(
             clips=clip_artifacts,
         )
 
+        try:
+            atomic_write_text(
+                ctx.pipeline_state_path,
+                json.dumps(
+                    {
+                        "job_id": ctx.job_id,
+                        "project_id": ctx.project_id,
+                        "stage": "completed",
+                        "progress_percent": 100,
+                        "message": "Job completed",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+        except Exception:
+            logger.exception("checkpoint.write_failed")
+
         completed_payload = JobCallbackPayload(
             job_id=job_id,
             project_id=project_id,
@@ -744,6 +790,25 @@ def process_job(
     except JobCancelledError:
         logger.info("job.cancelled")
 
+        try:
+            atomic_write_text(
+                ctx.pipeline_state_path,
+                json.dumps(
+                    {
+                        "job_id": ctx.job_id,
+                        "project_id": ctx.project_id,
+                        "stage": current_stage,
+                        "progress_percent": int(current_progress),
+                        "message": "Job cancelled",
+                        "error": "cancelled",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+        except Exception:
+            logger.exception("checkpoint.write_failed")
+
         cancelled_payload = JobCallbackPayload(
             job_id=job_id,
             project_id=project_id,
@@ -765,6 +830,25 @@ def process_job(
 
         return cancelled_payload.model_dump(mode="json")
     except Exception as e:
+        try:
+            atomic_write_text(
+                ctx.pipeline_state_path,
+                json.dumps(
+                    {
+                        "job_id": ctx.job_id,
+                        "project_id": ctx.project_id,
+                        "stage": current_stage,
+                        "progress_percent": int(current_progress),
+                        "message": f"Failed during stage: {current_stage}",
+                        "error": format_exception_short(e),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+        except Exception:
+            logger.exception("checkpoint.write_failed")
+
         failed_payload = JobCallbackPayload(
             job_id=job_id,
             project_id=project_id,

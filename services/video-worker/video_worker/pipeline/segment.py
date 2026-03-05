@@ -80,6 +80,176 @@ def _collect_text(*, segments: list[TranscriptSegment], start: float, end: float
 
 _WORD_TOKEN_RE = re.compile(r"\b[\w']+\b", re.UNICODE)
 
+_STOPWORDS_EN = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "but",
+    "by",
+    "for",
+    "from",
+    "have",
+    "he",
+    "i",
+    "if",
+    "in",
+    "is",
+    "it",
+    "its",
+    "me",
+    "my",
+    "not",
+    "of",
+    "on",
+    "or",
+    "our",
+    "she",
+    "so",
+    "that",
+    "the",
+    "their",
+    "then",
+    "there",
+    "they",
+    "this",
+    "to",
+    "we",
+    "what",
+    "when",
+    "where",
+    "who",
+    "why",
+    "with",
+    "you",
+    "your",
+}
+
+_STOPWORDS_FR = {
+    "a",
+    "au",
+    "aux",
+    "avec",
+    "ce",
+    "ces",
+    "dans",
+    "de",
+    "des",
+    "du",
+    "elle",
+    "en",
+    "et",
+    "eux",
+    "il",
+    "je",
+    "la",
+    "le",
+    "les",
+    "leur",
+    "lui",
+    "ma",
+    "mais",
+    "me",
+    "meme",
+    "même",
+    "mes",
+    "moi",
+    "mon",
+    "ne",
+    "nos",
+    "notre",
+    "nous",
+    "on",
+    "ou",
+    "par",
+    "pas",
+    "pour",
+    "qu",
+    "que",
+    "qui",
+    "sa",
+    "se",
+    "ses",
+    "son",
+    "sur",
+    "ta",
+    "te",
+    "tes",
+    "toi",
+    "ton",
+    "tu",
+    "un",
+    "une",
+    "vos",
+    "votre",
+    "vous",
+}
+
+
+def _topic_tokens(text: str, *, language: str | None) -> set[str]:
+    lang = (language or "en").lower().strip()
+    stop = _STOPWORDS_FR if lang == "fr" else _STOPWORDS_EN
+
+    tokens: set[str] = set()
+    for m in _WORD_TOKEN_RE.finditer(text or ""):
+        t = m.group(0).lower()
+        if len(t) <= 2:
+            continue
+        if t in stop:
+            continue
+        tokens.add(t)
+
+    return tokens
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    inter = len(a.intersection(b))
+    union = len(a.union(b))
+    return float(inter / union) if union else 0.0
+
+
+def _topic_boundary_strengths(
+    *, segments: list[TranscriptSegment], language: str | None
+) -> list[float]:
+    # Strength in [0..1] for each boundary between segment i and i+1.
+    if len(segments) < 2:
+        return []
+
+    token_sets = [_topic_tokens(s.text, language=language) for s in segments]
+    strengths: list[float] = []
+    for i in range(len(token_sets) - 1):
+        sim = _jaccard(token_sets[i], token_sets[i + 1])
+        strengths.append(_clamp01(1.0 - sim))
+    return strengths
+
+
+def _window_segment_indices(
+    *, segments: list[TranscriptSegment], start: float, end: float
+) -> tuple[int, int]:
+    # Returns (first_idx, last_idx) inclusive.
+    first = None
+    last = None
+
+    for idx, s in enumerate(segments):
+        if first is None and s.end_seconds > start:
+            first = idx
+        if s.start_seconds < end:
+            last = idx
+        if s.start_seconds >= end:
+            break
+
+    if first is None or last is None or last < first:
+        return 0, -1
+
+    return int(first), int(last)
+
 
 def score_text(text: str, *, language: str | None = None) -> tuple[float, list[str]]:
     t = text.strip()
@@ -244,74 +414,11 @@ def segment_candidates(
         per_seg_score.append(score)
         per_seg_reasons.append(rs)
 
-    # Topic shift heuristic: prefer windows that stay semantically cohesive.
-    # We approximate "subject change" by measuring token overlap between adjacent transcript segments.
-    stop = {
-        "the",
-        "and",
-        "to",
-        "a",
-        "of",
-        "in",
-        "is",
-        "it",
-        "that",
-        "this",
-        "on",
-        "for",
-        "with",
-        "you",
-        "i",
-        "we",
-        "they",
-        "le",
-        "la",
-        "les",
-        "de",
-        "des",
-        "du",
-        "et",
-        "un",
-        "une",
-        "en",
-        "que",
-        "qui",
-        "pour",
-        "dans",
-        "est",
-        "ce",
-        "ça",
-        "ca",
-        "tu",
-        "vous",
-        "je",
-        "il",
-        "elle",
-        "ils",
-        "elles",
-    }
+    topic_strengths = _topic_boundary_strengths(segments=segments, language=language)
 
-    def _token_set(text: str) -> set[str]:
-        tokens = [t.lower() for t in _WORD_TOKEN_RE.findall(text or "")]
-        out = {t for t in tokens if len(t) >= 3 and t not in stop}
-        return out
-
-    seg_tokens = [_token_set(s.text) for s in segments]
-
-    topic_boundary_after: list[bool] = []
-    for a, b in zip(seg_tokens, seg_tokens[1:], strict=False):
-        if not a or not b:
-            topic_boundary_after.append(False)
-            continue
-
-        inter = len(a & b)
-        uni = len(a | b)
-        if uni < 8:
-            topic_boundary_after.append(False)
-            continue
-
-        jacc = inter / float(uni)
-        topic_boundary_after.append(jacc < 0.06)
+    # Topic shift heuristic: treat very low token overlap as a "subject boundary".
+    # topic_strengths is a list with length (len(segments)-1), where index i is the boundary after segment i.
+    topic_boundary_after = [s >= 0.85 for s in topic_strengths]
 
     candidates: list[ClipCandidate] = []
 
@@ -402,6 +509,7 @@ def segment_candidates(
         info_density_score = _clamp01((wps_text - 1.6) / 2.4)
 
         energy_score = 0.0
+        energy_variation = 0.0
         silence_ratio = None
         silence_score = 0.0
 
@@ -412,7 +520,9 @@ def segment_candidates(
                 end_seconds=end,
             )
             if a is not None:
-                energy_score = _clamp01(a.rms * 4.0)
+                # Intensity + dynamics (volume variation). Keep this conservative.
+                energy_variation = float(_clamp01(a.rms_std * 10.0))
+                energy_score = _clamp01((a.rms * 3.0) + (energy_variation * 0.6))
                 silence_ratio = float(a.silence_ratio)
                 silence_score = _clamp01(1.0 - silence_ratio)
 
@@ -432,6 +542,27 @@ def segment_candidates(
         )
         score = _clamp01(score)
 
+        topic_internal = 0.0
+        topic_edge = 0.0
+
+        if topic_strengths:
+            i0, i1 = _window_segment_indices(segments=segments, start=start, end=end)
+            if i1 >= i0:
+                if i1 > i0:
+                    topic_internal = max(topic_strengths[i0:i1])
+
+                edge_vals: list[float] = []
+                if i0 > 0 and (i0 - 1) < len(topic_strengths):
+                    edge_vals.append(topic_strengths[i0 - 1])
+                if i1 < len(topic_strengths):
+                    edge_vals.append(topic_strengths[i1])
+
+                if edge_vals:
+                    topic_edge = float(sum(edge_vals) / len(edge_vals))
+
+                # Penalize segments that cross strong topic boundaries.
+                score = _clamp01((score * (1.0 - 0.18 * topic_internal)) + (0.05 * topic_edge))
+
         reasons = [r for r in (c.reason or "").split(",") if r]
         reasons.extend(base_hook_reasons)
         reasons.extend(emo_reasons)
@@ -442,6 +573,8 @@ def segment_candidates(
             reasons.append("low_silence")
         if wps >= 3.2:
             reasons.append("fast_speech")
+        if topic_internal >= 0.85:
+            reasons.append("topic_shift")
 
         reason_str = ",".join(list(dict.fromkeys([r for r in reasons if r]))[:6]) or "baseline"
 
@@ -454,11 +587,14 @@ def segment_candidates(
                 reason=reason_str,
                 features={
                     "energy_voix": float(energy_score),
+                    "energy_variation": float(energy_variation),
                     "emotion_mots": float(emo_score),
                     "densite_information": float(info_density_score),
                     "structure_hook": float(base_hook_score),
                     "absence_silence": float(silence_score),
                     "wps": float(wps),
+                    "topic_shift_internal": float(topic_internal),
+                    "topic_shift_edge": float(topic_edge),
                 },
             )
         )

@@ -166,6 +166,19 @@ class Settings(BaseSettings):
     download_max_retries: int = Field(2, ge=0, le=10)
     download_retry_backoff_seconds: float = Field(1.0, ge=0)
 
+    pipeline_stage_max_retries: int = Field(
+        1,
+        ge=0,
+        le=3,
+        description="Max retries for transient failures within a pipeline stage (transcribe/align/render)",
+    )
+
+    pipeline_stage_retry_backoff_seconds: float = Field(
+        1.0,
+        ge=0,
+        description="Backoff (seconds) between pipeline stage retries",
+    )
+
     audio_extract_normalize_enabled: bool = Field(
         True,
         description="If true, apply light normalization during audio extraction (pre-transcription)",
@@ -179,8 +192,8 @@ class Settings(BaseSettings):
     audio_extract_max_retries: int = Field(1, ge=0, le=5)
 
     transcript_cleanup_provider: str = Field(
-        "openai",
-        description="Transcript cleanup provider: none|heuristic|openai",
+        "spellcheck",
+        description="Transcript cleanup provider: none|heuristic|spellcheck|openai",
     )
 
     rq_job_timeout_seconds: int = Field(60 * 45, ge=60)
