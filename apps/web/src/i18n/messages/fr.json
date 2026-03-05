@@ -61,6 +61,7 @@
       "optionsTitle": "Options",
       "optionsHint": "Vous pourrez ajuster plus finement après (V1.1).",
       "languageLabel": "Langue",
+      "languageAuto": "Auto (détection)",
       "segmentationLabel": "Découpage",
       "segmentationViral": "Viral (meilleurs moments)",
       "segmentationChapters": "Chapitres YouTube (sinon tranches)",

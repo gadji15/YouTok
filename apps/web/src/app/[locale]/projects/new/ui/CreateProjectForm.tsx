@@ -16,7 +16,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
 
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
-  const [language, setLanguage] = useState<'fr' | 'en'>('fr');
+  const [language, setLanguage] = useState<'fr' | 'en' | 'auto'>('fr');
   const [segmentationMode, setSegmentationMode] = useState<'viral' | 'chapters'>('viral');
   const [outputAspect, setOutputAspect] = useState<'vertical' | 'source'>('vertical');
   const [clipLength, setClipLength] = useState('180');
@@ -54,7 +54,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
       body: JSON.stringify({
         name: name.trim(),
         youtube_url: url.trim(),
-        language,
+        ...(language === 'auto' ? {} : { language }),
         subtitles_enabled: subtitlesEnabled,
         clip_min_seconds: 60,
         clip_max_seconds: clipMaxSeconds,
@@ -130,15 +130,9 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-[11px] font-medium text-[var(--text-muted)]">Preview</div>
-                <div className="mt-1 text-xs text-[var(--text-muted)]">
-                  {t('form.urlValid')}
-                </div>
+                <div className="mt-1 text-xs text-[var(--text-muted)]">{t('form.urlValid')}</div>
               </div>
-              <YouTubeEmbed
-                videoId={videoId}
-                title={t('form.urlLabel')}
-                size="sm"
-              />
+              <YouTubeEmbed videoId={videoId} title={t('form.urlLabel')} size="sm" />
             </div>
           </div>
         ) : null}
@@ -151,9 +145,13 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           <div className="grid gap-2">
             <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.languageLabel')}</label>
-            <Select value={language} onChange={(e) => setLanguage(e.target.value as 'fr' | 'en')}>
+            <Select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as 'fr' | 'en' | 'auto')}
+            >
               <option value="fr">FR</option>
               <option value="en">EN</option>
+              <option value="auto">{t('form.languageAuto')}</option>
             </Select>
           </div>
 
@@ -192,9 +190,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
           </div>
 
           <div className="grid gap-2">
-            <label className="text-xs font-medium text-[var(--text-muted)]">
-              {t('form.subtitlesLabel')}
-            </label>
+            <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.subtitlesLabel')}</label>
             <Select
               value={subtitlesEnabled ? 'on' : 'off'}
               onChange={(e) => setSubtitlesEnabled(e.target.value === 'on')}

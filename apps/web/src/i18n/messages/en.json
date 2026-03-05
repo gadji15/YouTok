@@ -61,6 +61,7 @@
       "optionsTitle": "Options",
       "optionsHint": "You’ll be able to fine-tune later (V1.1).",
       "languageLabel": "Language",
+      "languageAuto": "Auto (detect)",
       "segmentationLabel": "Segmentation",
       "segmentationViral": "Viral highlights",
       "segmentationChapters": "YouTube chapters (else slices)",
