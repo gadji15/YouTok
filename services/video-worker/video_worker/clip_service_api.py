@@ -6,13 +6,15 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from .utils.errors import format_exception_short
-
 from .config import get_settings
-from .logging import get_logger
+from .logging import configure_logging, get_logger
 from .pipeline.clip import render_clips
 from .pipeline.types import ClipCandidate, TranscriptSegment, WordTiming
+from .utils.errors import format_exception_short
 
+
+settings = get_settings()
+configure_logging(settings.log_level)
 
 app = FastAPI(title="clip-service", version="0.1")
 
@@ -24,9 +26,9 @@ def _resolve_within_storage_root(path_str: str) -> Path:
     if not p.is_absolute():
         raise HTTPException(status_code=400, detail="path_must_be_absolute")
 
-    real = Path(Path(path_str).resolve())
+    real = p.resolve()
 
-    root = Path(get_settings().storage_path).resolve()
+    root = Path(settings.storage_path).resolve()
     root_prefix = str(root).rstrip("/") + "/"
 
     if not str(real).startswith(root_prefix):
@@ -89,51 +91,49 @@ def health() -> dict[str, str]:
 
 @app.post("/render")
 def render(req: RenderRequest) -> dict[str, Any]:
-    settings = get_settings()
     logger = get_logger(service="clip-service")
 
-    source_video = _resolve_within_storage_root(req.source_video_path)
-    output_dir = _resolve_within_storage_root(req.output_dir)
-
-    clips = [
-        ClipCandidate(
-            clip_id=c.clip_id,
-            start_seconds=c.start_seconds,
-            end_seconds=c.end_seconds,
-            score=c.score,
-            reason=c.reason,
-            title=c.title,
-            features=c.features,
-        )
-        for c in req.clips
-    ]
-
-    transcript = [
-        TranscriptSegment(
-            start_seconds=s.start_seconds,
-            end_seconds=s.end_seconds,
-            text=s.text,
-            confidence=s.confidence,
-        )
-        for s in req.transcript_segments
-    ]
-
-    words = (
-        [
-            WordTiming(
-                word=w.word,
-                start_seconds=w.start_seconds,
-                end_seconds=w.end_seconds,
-                confidence=w.confidence,
-            )
-            for w in (req.word_timings or [])
-        ]
-        if req.word_timings is not None
-        else None
-    )
-
     try:
-        # Delegate to the shared render engine.
+        source_video = _resolve_within_storage_root(req.source_video_path)
+        output_dir = _resolve_within_storage_root(req.output_dir)
+
+        clips = [
+            ClipCandidate(
+                clip_id=c.clip_id,
+                start_seconds=c.start_seconds,
+                end_seconds=c.end_seconds,
+                score=c.score,
+                reason=c.reason,
+                title=c.title,
+                features=c.features,
+            )
+            for c in req.clips
+        ]
+
+        transcript = [
+            TranscriptSegment(
+                start_seconds=s.start_seconds,
+                end_seconds=s.end_seconds,
+                text=s.text,
+                confidence=s.confidence,
+            )
+            for s in req.transcript_segments
+        ]
+
+        words = (
+            [
+                WordTiming(
+                    word=w.word,
+                    start_seconds=w.start_seconds,
+                    end_seconds=w.end_seconds,
+                    confidence=w.confidence,
+                )
+                for w in (req.word_timings or [])
+            ]
+            if req.word_timings is not None
+            else None
+        )
+
         rendered = render_clips(
             source_video=source_video,
             transcript_segments=transcript,
@@ -156,10 +156,10 @@ def render(req: RenderRequest) -> dict[str, Any]:
             quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
             quality_gate_max_attempts=settings.quality_gate_max_attempts,
         )
+
+        return {"clips": rendered}
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("clip_service.render_exception")
         raise HTTPException(status_code=500, detail=format_exception_short(e))
-
-    return {"clips": rendered}

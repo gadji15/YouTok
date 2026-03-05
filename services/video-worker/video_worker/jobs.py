@@ -815,9 +815,19 @@ def process_job(
                     try:
                         res.raise_for_status()
                     except httpx.HTTPStatusError:
+                        detail = None
+                        try:
+                            j = res.json()
+                            if isinstance(j, dict):
+                                detail = j.get("detail")
+                        except Exception:
+                            detail = None
+
                         logger.error(
                             "clip_service.render_failed",
                             status_code=res.status_code,
+                            content_type=res.headers.get("content-type"),
+                            response_detail=detail,
                             response_text=(res.text or "")[:4000],
                         )
                         raise
