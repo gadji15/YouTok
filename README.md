@@ -4,6 +4,7 @@ Plateforme SaaS (V1: usage interne / admin unique) qui transforme une vidéo You
 
 ## Stack
 
+- **Frontend**: Next.js (standalone, BFF)
 - **Backend**: Laravel (scaffoldé automatiquement via `backend-bootstrap/`), Blade UI + auth (Breeze)
 - **DB**: MySQL (via Docker)
 - **Queue**: Laravel database queue
@@ -19,7 +20,9 @@ cp .env.example .env
 make up
 ```
 
-Ouvrir: http://localhost:8080
+Ouvrir:
+- Frontend (Next.js): http://localhost:3000
+- Backend admin (Laravel/Blade): http://localhost:8080
 
 ## Déploiement (prod, Docker + Caddy)
 
@@ -67,6 +70,21 @@ Puis mettez dans `.env`:
 
 ```env
 VIDEO_WORKER_BASE_URL=http://video-worker-api:8000
+```
+
+### Activer le tiktok-bot (optionnel / phase 3)
+
+```bash
+make up-tiktok-bot
+```
+
+- API locale (host): http://localhost:3001
+- URL interne Docker (pour Laravel): `http://tiktok-bot:3000`
+
+Puis mettez dans `.env`:
+
+```env
+TIKTOK_BOT_BASE_URL=http://tiktok-bot:3000
 ```
 
 ## Flux (V1)

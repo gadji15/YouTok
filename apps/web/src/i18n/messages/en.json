@@ -312,6 +312,26 @@
       "deleting": "Deleting…",
       "copyLink": "Copy link",
       "openInNewTab": "Open in new tab"
+    },
+    "publishing": {
+      "title": "TikTok publishing",
+      "subtitle": "Prepare a caption and send the clip to the publishing bot.",
+      "captionLabel": "Caption",
+      "captionPlaceholder": "Add a caption…",
+      "captionHint": "Saved in the backend (draft).",
+      "save": "Save",
+      "saving": "Saving…",
+      "accountLabel": "Account",
+      "accountPlaceholder": "Select an account",
+      "statusLabel": "Publish status",
+      "publishedAt": "Published: {value}",
+      "publish": "Publish",
+      "publishing": "Publishing…",
+      "refresh": "Refresh",
+      "disabledHint": "Publishing is available once the clip is ready.",
+      "errors": {
+        "missingAccount": "Select a TikTok account before publishing."
+      }
     }
   }
 }

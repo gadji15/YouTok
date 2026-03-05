@@ -20,9 +20,14 @@ Route::middleware('internal.secret')->get('/projects/{project}/artifacts/transcr
 Route::middleware('internal.secret')->get('/projects/{project}/artifacts/subtitles', [\App\Http\Controllers\Api\ProjectAssetController::class, 'subtitlesSrt']);
 Route::middleware('internal.secret')->get('/projects/{project}/artifacts/clips', [\App\Http\Controllers\Api\ProjectAssetController::class, 'clipsJson']);
 
+Route::middleware('internal.secret')->get('/tiktok-accounts', [\App\Http\Controllers\Api\TikTokAccountController::class, 'index']);
+
 Route::middleware('internal.secret')->get('/clips', [\App\Http\Controllers\Api\ClipController::class, 'index']);
 Route::middleware('internal.secret')->get('/clips/{clip}', [\App\Http\Controllers\Api\ClipController::class, 'show']);
+Route::middleware('internal.secret')->patch('/clips/{clip}', [\App\Http\Controllers\Api\ClipController::class, 'update']);
 Route::middleware('internal.secret')->delete('/clips/{clip}', [\App\Http\Controllers\Api\ClipController::class, 'destroy']);
+Route::middleware('internal.secret')->post('/clips/{clip}/publish', [\App\Http\Controllers\Api\ClipPublishController::class, 'publish']);
+Route::middleware('internal.secret')->get('/clips/{clip}/publish/status', [\App\Http\Controllers\Api\ClipPublishController::class, 'status']);
 Route::middleware('internal.secret')->get('/clips/{clip}/video', [\App\Http\Controllers\Api\ClipAssetController::class, 'video']);
 Route::middleware('internal.secret')->get('/clips/{clip}/subtitles.srt', [\App\Http\Controllers\Api\ClipAssetController::class, 'downloadSrt']);
 Route::middleware('internal.secret')->get('/clips/{clip}/subtitles.ass', [\App\Http\Controllers\Api\ClipAssetController::class, 'downloadAss']);

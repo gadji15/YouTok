@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     )
 
     storage_path: str = Field(
-        "/shared/video-worker",
-        description="Shared storage path for downloaded sources and generated clips",
+        "/shared/storage",
+        description="Shared storage root (contains projects/, clips/, transcripts/, subtitles/, exports/)",
     )
 
     # Optional S3-compatible storage (V2 prep). When configured, artifacts can be uploaded

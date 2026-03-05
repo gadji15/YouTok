@@ -143,7 +143,7 @@ def process_job(
         youtube_url=youtube_url,
         callback_url=callback_url,
         callback_secret=callback_secret,
-        root_dir=Path(settings.storage_path) / job_id,
+        storage_root=Path(settings.storage_path),
     )
 
     ctx.ensure_dirs()

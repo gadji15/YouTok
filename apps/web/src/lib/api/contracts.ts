@@ -146,6 +146,19 @@ export type ApiClipsIndexResponse = {
   data: ApiClipListItem[];
 };
 
+export type ApiTikTokAccountStatus = 'active' | 'disabled' | 'banned';
+
+export type ApiTikTokAccount = {
+  id: string;
+  username: string;
+  status: ApiTikTokAccountStatus;
+  notes: string | null;
+};
+
+export type ApiTikTokAccountsIndexResponse = {
+  data: ApiTikTokAccount[];
+};
+
 export type ApiClipDetail = {
   id: string;
   project: { id: string; name: string } | null;
@@ -158,6 +171,14 @@ export type ApiClipDetail = {
   title: string | null;
   title_candidates?: ApiClipTitleCandidates | null;
   quality_summary?: ApiClipQualitySummary | null;
+
+  tiktok_caption: string | null;
+  tiktok_account_id: string | null;
+  tiktok_publish_job_id: string | null;
+  tiktok_publish_status: string | null;
+  tiktok_publish_error: string | null;
+  tiktok_published_at: string | null;
+
   video_path: string | null;
   subtitles_ass_path: string | null;
   subtitles_srt_path: string | null;

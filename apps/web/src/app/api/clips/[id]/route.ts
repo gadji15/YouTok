@@ -1,9 +1,9 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 
 import { laravelInternalFetch } from '@/lib/server/laravel';
 
 export async function GET(
-  _req: NextRequest,
+  _req: Request,
   { params }: { params: Promise<{ id?: string }> }
 ) {
   const { id } = await params;
@@ -16,8 +16,35 @@ export async function GET(
   return NextResponse.json(json, { status: res.status });
 }
 
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id?: string }> }
+) {
+  const { id } = await params;
+  if (!id) {
+    return NextResponse.json({ error: 'Missing clip id.' }, { status: 400 });
+  }
+
+  const body = await req.text();
+
+  const res = await laravelInternalFetch(`/api/clips/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: {
+      'content-type': req.headers.get('content-type') ?? 'application/json; charset=utf-8',
+    },
+    body,
+  });
+
+  const contentType = res.headers.get('content-type') ?? 'application/json; charset=utf-8';
+  const responseBody = await res.text();
+  return new NextResponse(responseBody, {
+    status: res.status,
+    headers: { 'Content-Type': contentType },
+  });
+}
+
 export async function DELETE(
-  _req: NextRequest,
+  _req: Request,
   { params }: { params: Promise<{ id?: string }> }
 ) {
   const { id } = await params;
@@ -34,6 +61,9 @@ export async function DELETE(
   }
 
   const contentType = res.headers.get('content-type') ?? 'application/json';
-  const body = await res.text();
-  return new NextResponse(body, { status: res.status, headers: { 'Content-Type': contentType } });
+  const responseBody = await res.text();
+  return new NextResponse(responseBody, {
+    status: res.status,
+    headers: { 'Content-Type': contentType },
+  });
 }
