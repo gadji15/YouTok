@@ -21,6 +21,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
   const [outputAspect, setOutputAspect] = useState<'vertical' | 'source'>('vertical');
   const [clipLength, setClipLength] = useState('180');
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
+  const [subtitleTemplate, setSubtitleTemplate] = useState('cinematic_karaoke');
   const [originalityEnabled, setOriginalityEnabled] = useState(false);
 
   const clipMaxSeconds = useMemo(() => {
@@ -58,7 +59,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
         subtitles_enabled: subtitlesEnabled,
         clip_min_seconds: 60,
         clip_max_seconds: clipMaxSeconds,
-        subtitle_template: 'modern',
+        subtitle_template: subtitleTemplate,
         segmentation_mode: segmentationMode,
         output_aspect: outputAspect,
         originality_mode: originalityEnabled ? 'voiceover' : 'none',
@@ -198,6 +199,22 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
               <option value="on">{t('form.subtitlesOn')}</option>
               <option value="off">{t('form.subtitlesOff')}</option>
             </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.subtitleTemplateLabel')}</label>
+            <Select
+              value={subtitleTemplate}
+              onChange={(e) => setSubtitleTemplate(e.target.value)}
+              disabled={!subtitlesEnabled}
+            >
+              <option value="default">{t('form.subtitleTemplateDefault')}</option>
+              <option value="modern">{t('form.subtitleTemplateModern')}</option>
+              <option value="modern_karaoke">{t('form.subtitleTemplateModernKaraoke')}</option>
+              <option value="cinematic">{t('form.subtitleTemplateCinematic')}</option>
+              <option value="cinematic_karaoke">{t('form.subtitleTemplateCinematicKaraoke')}</option>
+            </Select>
+            <div className="text-xs text-[var(--text-muted)]">{t('form.subtitleTemplateHint')}</div>
           </div>
 
           <div className="grid gap-2 sm:col-span-3">

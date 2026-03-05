@@ -61,6 +61,7 @@ class ProjectController extends Controller
             'name' => $data['name'],
             'youtube_url' => $data['youtube_url'],
             'output_aspect' => $request->input('output_aspect') ?? 'vertical',
+            'subtitle_template' => $request->input('subtitle_template'),
             'originality_mode' => $request->boolean('originality_enabled') ? 'voiceover' : 'none',
             'status' => ProjectStatus::queued,
         ]);

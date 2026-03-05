@@ -37,6 +37,23 @@
                             <x-input-error class="mt-2" :messages="$errors->get('output_aspect')" />
                         </div>
 
+                        <div>
+                            <x-input-label for="subtitle_template" value="Style de sous-titres" />
+                            <select
+                                id="subtitle_template"
+                                name="subtitle_template"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            >
+                                <option value="default" {{ old('subtitle_template', 'cinematic_karaoke') === 'default' ? 'selected' : '' }}>Default</option>
+                                <option value="modern" {{ old('subtitle_template', 'cinematic_karaoke') === 'modern' ? 'selected' : '' }}>Modern</option>
+                                <option value="modern_karaoke" {{ old('subtitle_template', 'cinematic_karaoke') === 'modern_karaoke' ? 'selected' : '' }}>Modern (karaoke)</option>
+                                <option value="cinematic" {{ old('subtitle_template', 'cinematic_karaoke') === 'cinematic' ? 'selected' : '' }}>Cinematic</option>
+                                <option value="cinematic_karaoke" {{ old('subtitle_template', 'cinematic_karaoke') === 'cinematic_karaoke' ? 'selected' : '' }}>Cinematic (karaoke)</option>
+                            </select>
+                            <div class="mt-1 text-sm text-gray-600">Choisissez un style (on pourra en ajouter d’autres).</div>
+                            <x-input-error class="mt-2" :messages="$errors->get('subtitle_template')" />
+                        </div>
+
                         <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-4">
                             <div>
                                 <div class="text-sm font-medium text-gray-900">Mode originalité</div>

@@ -72,6 +72,13 @@
       "subtitlesLabel": "Sous-titres",
       "subtitlesOn": "Activés",
       "subtitlesOff": "Désactivés",
+      "subtitleTemplateLabel": "Style de sous-titres",
+      "subtitleTemplateHint": "Choisissez un style. Vous pourrez en ajouter d’autres plus tard.",
+      "subtitleTemplateDefault": "Default",
+      "subtitleTemplateModern": "Modern",
+      "subtitleTemplateModernKaraoke": "Modern (karaoke)",
+      "subtitleTemplateCinematic": "Cinematic",
+      "subtitleTemplateCinematicKaraoke": "Cinematic (karaoke)",
       "originalityLabel": "Mode originalité",
       "originalityHint": "Ajoute une transformation (ex: voiceover). Ne garantit pas l’absence de copyright.",
       "create": "Créer le projet"
