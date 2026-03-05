@@ -13,6 +13,17 @@ def test_render_clips_builds_filters_for_stabilization_and_visual_enhance(monkey
 
     def fake_run(args, logger=None):
         calls.append([str(a) for a in args])
+
+        # Simulate vidstabdetect output.
+        if args and args[0] == "ffmpeg" and "vidstabdetect" in " ".join([str(a) for a in args]):
+            vf = args[args.index("-vf") + 1]
+            if "result=" in vf:
+                trf = vf.split("result=", 1)[1]
+                trf = trf.replace("\\\\", "\\").replace("\\:", ":").replace("\\,", ",")
+                Path(trf).parent.mkdir(parents=True, exist_ok=True)
+                Path(trf).write_text("stub\n", encoding="utf-8")
+            return
+
         # Create output file for the final ffmpeg render command.
         if args and args[0] == "ffmpeg" and str(args[-1]).endswith("video.mp4"):
             Path(args[-1]).parent.mkdir(parents=True, exist_ok=True)
@@ -48,7 +59,7 @@ def test_render_clips_builds_filters_for_stabilization_and_visual_enhance(monkey
     cmd = ffmpeg_cmds[0]
     vf = cmd[cmd.index("-vf") + 1]
 
-    assert "deshake=" in vf
+    assert ("vidstabtransform=" in vf) or ("deshake=" in vf)
     assert "eq=contrast=" in vf
     assert "unsharp=" in vf
 

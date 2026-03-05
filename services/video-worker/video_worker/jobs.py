@@ -754,6 +754,66 @@ def process_job(
         )
 
         def _do_render():
+            # If a clip-service is configured, delegate rendering to it (Part 3 recommended structure).
+            if settings.clip_service_base_url.strip():
+                import httpx
+
+                base = settings.clip_service_base_url.strip().rstrip("/")
+
+                payload = {
+                    "source_video_path": str(ctx.source_video_path),
+                    "output_dir": str(ctx.clips_dir),
+                    "clips": [
+                        {
+                            "clip_id": c.clip_id,
+                            "start_seconds": c.start_seconds,
+                            "end_seconds": c.end_seconds,
+                            "score": c.score,
+                            "reason": c.reason,
+                            "title": getattr(c, "title", None),
+                            "features": getattr(c, "features", None),
+                        }
+                        for c in clips
+                    ],
+                    "transcript_segments": [
+                        {
+                            "start_seconds": s.start_seconds,
+                            "end_seconds": s.end_seconds,
+                            "text": s.text,
+                            "confidence": s.confidence,
+                        }
+                        for s in render_segments
+                    ],
+                    "subtitles_enabled": effective_subtitles_enabled,
+                    "subtitle_template": effective_subtitle_template,
+                    "output_aspect": effective_output_aspect,
+                    "target_fps": settings.target_fps,
+                    "enable_loudnorm": settings.enable_loudnorm,
+                    "stabilization_enabled": settings.stabilization_enabled,
+                    "visual_enhance_enabled": settings.visual_enhance_enabled,
+                    "ui_safe_ymin": settings.ui_safe_ymin,
+                    "word_timings": (
+                        [
+                            {
+                                "word": w.word,
+                                "start_seconds": w.start_seconds,
+                                "end_seconds": w.end_seconds,
+                                "confidence": w.confidence,
+                            }
+                            for w in (render_word_timings or [])
+                        ]
+                        if render_word_timings is not None
+                        else None
+                    ),
+                }
+
+                with httpx.Client(timeout=60.0) as client:
+                    res = client.post(base + "/render", json=payload)
+                    res.raise_for_status()
+                    data = res.json()
+
+                return data.get("clips") or []
+
             return render_clips(
                 source_video=ctx.source_video_path,
                 transcript_segments=render_segments,

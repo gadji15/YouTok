@@ -209,6 +209,29 @@ services:
       redis:
         condition: service_healthy
 
+  clip-service:
+    build:
+      context: ./services/video-worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      VIDEO_WORKER_STORAGE_PATH: ${VIDEO_WORKER_STORAGE_PATH:-/shared/storage}
+      VIDEO_WORKER_TARGET_FPS: ${VIDEO_WORKER_TARGET_FPS:-30}
+      VIDEO_WORKER_ENABLE_LOUDNORM: ${VIDEO_WORKER_ENABLE_LOUDNORM:-false}
+      VIDEO_WORKER_LOG_LEVEL: ${VIDEO_WORKER_LOG_LEVEL:-INFO}
+      VIDEO_WORKER_QUALITY_GATE_ENABLED: ${VIDEO_WORKER_QUALITY_GATE_ENABLED:-false}
+      VIDEO_WORKER_QUALITY_GATE_FACE_OVERLAP_P95_THRESHOLD: ${VIDEO_WORKER_QUALITY_GATE_FACE_OVERLAP_P95_THRESHOLD:-0.05}
+      VIDEO_WORKER_QUALITY_GATE_MAX_ATTEMPTS: ${VIDEO_WORKER_QUALITY_GATE_MAX_ATTEMPTS:-2}
+      VIDEO_WORKER_UI_SAFE_YMIN: ${VIDEO_WORKER_UI_SAFE_YMIN:-0.78}
+      VIDEO_WORKER_STABILIZATION_ENABLED: ${VIDEO_WORKER_STABILIZATION_ENABLED:-true}
+      VIDEO_WORKER_VISUAL_ENHANCE_ENABLED: ${VIDEO_WORKER_VISUAL_ENHANCE_ENABLED:-true}
+    volumes:
+      - video_worker_shared:/shared
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["uvicorn", "video_worker.clip_service_api:app", "--host=0.0.0.0", "--port=8000"]
+
   video-worker-worker:
     build:
       context: ./services/video-worker
@@ -230,11 +253,14 @@ services:
       VIDEO_WORKER_LOG_LEVEL: ${VIDEO_WORKER_LOG_LEVEL:-INFO}
       VIDEO_WORKER_API_KEY: ${VIDEO_WORKER_API_KEY:-}
       VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST: ${VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST:-backend}
+      VIDEO_WORKER_CLIP_SERVICE_BASE_URL: ${VIDEO_WORKER_CLIP_SERVICE_BASE_URL:-http://clip-service:8000}
     volumes:
       - video_worker_shared:/shared
     depends_on:
       redis:
         condition: service_healthy
+      clip-service:
+        condition: service_started
     command: ["python", "-m", "video_worker.worker"]
 
 volumes:

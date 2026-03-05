@@ -214,6 +214,12 @@ class Settings(BaseSettings):
     sentry_dsn: str = Field("", description="Sentry DSN (optional)")
     sentry_traces_sample_rate: float = Field(0.0, ge=0.0, le=1.0)
 
+    clip_service_base_url: str = Field(
+        "",
+        validation_alias="VIDEO_WORKER_CLIP_SERVICE_BASE_URL",
+        description="Optional external clip-service base URL (if set, render stage can be delegated)",
+    )
+
     log_level: str = Field("INFO")
 
 

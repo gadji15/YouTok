@@ -597,9 +597,51 @@ def render_clips(
             ]
 
         if stabilization_enabled:
-            # Conservative stabilization (no prior pass needed). Keeps the image stable without
-            # introducing heavy warping.
-            vf_parts.append("deshake=x=16:y=16:w=64:h=64:rx=16:ry=16:edge=mirror")
+            # Prefer a higher-quality 2-pass stabilization when available:
+            # - pass 1: vidstabdetect writes transforms
+            # - pass 2: vidstabtransform applies them
+            # Fallback to deshake if vidstab isn't available or fails.
+
+            stab_trf = clip_dir / "stab.trf"
+
+            def _run_vidstab_detect() -> None:
+                # Analyze only the clip window to keep it fast.
+                # Use a reduced resolution for speed; this doesn't affect final quality.
+                args = [
+                    "ffmpeg",
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-ss",
+                    str(clip.start_seconds),
+                    "-i",
+                    str(source_video),
+                    "-t",
+                    str(duration),
+                    "-vf",
+                    "scale=640:-2,vidstabdetect=shakiness=6:accuracy=12:result=" + _ffmpeg_filter_escape_path(stab_trf),
+                    "-f",
+                    "null",
+                    "-",
+                ]
+                run(args, logger=logger.bind(clip_id=clip.clip_id, step="vidstabdetect"))
+
+            try:
+                if not stab_trf.exists() or stab_trf.stat().st_size <= 0:
+                    _run_vidstab_detect()
+
+                if stab_trf.exists() and stab_trf.stat().st_size > 0:
+                    vf_parts.append(
+                        "vidstabtransform=input="
+                        + _ffmpeg_filter_escape_path(stab_trf)
+                        + ":zoom=0:smoothing=18:optzoom=0"
+                    )
+                else:
+                    vf_parts.append("deshake=x=16:y=16:w=64:h=64:rx=16:ry=16:edge=mirror")
+            except Exception:
+                logger.exception("stabilization.vidstab_failed_fallback_deshake", clip_id=clip.clip_id)
+                vf_parts.append("deshake=x=16:y=16:w=64:h=64:rx=16:ry=16:edge=mirror")
 
         if visual_enhance_enabled:
             # Mobile-first, conservative enhancements.
