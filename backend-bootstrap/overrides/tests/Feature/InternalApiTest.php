@@ -90,6 +90,66 @@ class InternalApiTest extends TestCase
             ]);
     }
 
+    public function test_tiktok_account_index_requires_internal_secret(): void
+    {
+        config()->set('admin.internal_api_secret', 'test-secret');
+
+        \App\Models\TikTokAccount::query()->create([
+            'username' => 'hikma',
+            'status' => \App\Enums\TikTokAccountStatus::active,
+            'notes' => null,
+        ]);
+
+        $this->getJson('/api/tiktok-accounts')->assertForbidden();
+
+        $this->withHeader('X-Internal-Secret', 'test-secret')
+            ->getJson('/api/tiktok-accounts')
+            ->assertOk()
+            ->assertJsonStructure([
+                'data' => [
+                    ['id', 'username', 'status', 'notes'],
+                ],
+            ]);
+    }
+
+    public function test_clip_update_requires_internal_secret(): void
+    {
+        config()->set('admin.internal_api_secret', 'test-secret');
+
+        $project = Project::query()->create([
+            'name' => 'Test',
+            'youtube_url' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+            'status' => ProjectStatus::processing,
+        ]);
+
+        $clip = Clip::query()->create([
+            'project_id' => (string) $project->id,
+            'external_id' => 'c1',
+            'status' => ClipStatus::ready,
+            'video_path' => '/shared/c1.mp4',
+            'tiktok_caption' => null,
+        ]);
+
+        $this->patchJson('/api/clips/'.(string) $clip->id, [
+            'tiktok_caption' => 'Hello world',
+        ])->assertForbidden();
+
+        $this->withHeader('X-Internal-Secret', 'test-secret')
+            ->patchJson('/api/clips/'.(string) $clip->id, [
+                'tiktok_caption' => 'Hello world',
+            ])
+            ->assertOk()
+            ->assertJson([
+                'id' => (string) $clip->id,
+                'tiktok_caption' => 'Hello world',
+            ]);
+
+        $this->assertDatabaseHas('clips', [
+            'id' => (string) $clip->id,
+            'tiktok_caption' => 'Hello world',
+        ]);
+    }
+
     public function test_project_delete_requires_internal_secret_and_deletes_artifacts(): void
     {
         config()->set('admin.internal_api_secret', 'test-secret');

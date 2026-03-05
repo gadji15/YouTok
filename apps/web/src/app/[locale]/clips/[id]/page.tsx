@@ -19,6 +19,7 @@ import { Skeleton } from "@/ui/primitives/skeleton";
 import { CopyButton } from "@/ui/shell/CopyButton";
 import { PageHeader } from "@/ui/shell/PageHeader";
 
+import { ClipPublishingCard } from "./ui/ClipPublishingCard";
 import { DeleteClipButton } from "./ui/DeleteClipButton";
 
 export default async function ClipDetailsPage({
@@ -219,6 +220,22 @@ export default async function ClipDetailsPage({
               </div>
             </CardContent>
           </Card>
+
+          <ClipPublishingCard
+            clipId={id}
+            initialCaption={
+              clip.tiktok_caption ??
+              [clip.title, ...(clip.title_candidates?.hashtags ?? [])]
+                .filter((v): v is string => Boolean(v && v.trim()))
+                .join(' ')
+            }
+            initialAccountId={clip.tiktok_account_id}
+            initialPublishStatus={clip.tiktok_publish_status}
+            initialPublishJobId={clip.tiktok_publish_job_id}
+            initialPublishError={clip.tiktok_publish_error}
+            initialPublishedAt={clip.tiktok_published_at}
+            canPublish={status === "ready" && Boolean(clip.video_path)}
+          />
 
           <Card>
             <CardHeader>

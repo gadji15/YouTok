@@ -35,7 +35,7 @@ def test_best_effort_progress_callback_posts_expected_payload(monkeypatch, tmp_p
         youtube_url="https://youtube.test/watch?v=abc",
         callback_url="https://example.test/callback",
         callback_secret="secret",
-        root_dir=tmp_path,
+        storage_root=tmp_path,
     )
 
     _best_effort_progress_callback(

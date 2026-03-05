@@ -19,7 +19,7 @@ Common:
 
 - `VIDEO_WORKER_REDIS_URL` (required) e.g. `redis://redis:6379/0`
 - `VIDEO_WORKER_QUEUE_NAME` (default: `video-worker`)
-- `VIDEO_WORKER_STORAGE_PATH` (default: `/shared/video-worker`)
+- `VIDEO_WORKER_STORAGE_PATH` (default: `/shared/storage`)
 - `VIDEO_WORKER_WHISPER_MODEL` (default: `base`)
 - `VIDEO_WORKER_WHISPER_DEVICE` (default: `auto`; one of `auto`, `cpu`, `cuda`, `mps`)
 - `VIDEO_WORKER_WHISPER_TEMPERATURE` (default: `0.0`)
@@ -147,7 +147,7 @@ Payload shape:
 
 Additional artifacts written to disk (not currently included in the callback payload):
 
-- `artifacts/words.json`: word-level timestamps `{word,start,end,confidence}` (WhisperX when available, otherwise heuristic fallback).
+- `projects/<project_id>/artifacts/words.json`: word-level timestamps `{word,start,end,confidence}` (WhisperX when available, otherwise heuristic fallback).
 
 ## Integration test plan (curl)
 

@@ -11,24 +11,43 @@ class JobContext:
     youtube_url: str
     callback_url: str
     callback_secret: str
-    root_dir: Path
+    storage_root: Path
+
+    @property
+    def project_dir(self) -> Path:
+        return self.storage_root / "projects" / self.project_id
 
     @property
     def source_dir(self) -> Path:
-        return self.root_dir / "source"
+        return self.project_dir / "source"
 
     @property
-    def artifacts_dir(self) -> Path:
-        return self.root_dir / "artifacts"
+    def project_artifacts_dir(self) -> Path:
+        return self.project_dir / "artifacts"
+
+    @property
+    def transcripts_dir(self) -> Path:
+        return self.storage_root / "transcripts" / self.project_id
+
+    @property
+    def subtitles_dir(self) -> Path:
+        return self.storage_root / "subtitles" / self.project_id
 
     @property
     def clips_dir(self) -> Path:
-        return self.root_dir / "clips"
+        return self.storage_root / "clips" / self.project_id
+
+    @property
+    def exports_dir(self) -> Path:
+        return self.storage_root / "exports" / self.project_id
 
     def ensure_dirs(self) -> None:
         self.source_dir.mkdir(parents=True, exist_ok=True)
-        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self.project_artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self.transcripts_dir.mkdir(parents=True, exist_ok=True)
+        self.subtitles_dir.mkdir(parents=True, exist_ok=True)
         self.clips_dir.mkdir(parents=True, exist_ok=True)
+        self.exports_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def source_video_path(self) -> Path:
@@ -36,20 +55,20 @@ class JobContext:
 
     @property
     def audio_path(self) -> Path:
-        return self.artifacts_dir / "audio.wav"
+        return self.project_artifacts_dir / "audio.wav"
 
     @property
     def transcript_json_path(self) -> Path:
-        return self.artifacts_dir / "transcript.json"
+        return self.transcripts_dir / "transcript.json"
 
     @property
     def subtitles_srt_path(self) -> Path:
-        return self.artifacts_dir / "subtitles.srt"
+        return self.subtitles_dir / "subtitles.srt"
 
     @property
     def words_json_path(self) -> Path:
-        return self.artifacts_dir / "words.json"
+        return self.project_artifacts_dir / "words.json"
 
     @property
     def clips_json_path(self) -> Path:
-        return self.artifacts_dir / "clips.json"
+        return self.project_artifacts_dir / "clips.json"

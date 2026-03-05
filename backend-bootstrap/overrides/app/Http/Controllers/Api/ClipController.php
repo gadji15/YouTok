@@ -41,6 +41,7 @@ class ClipController
                     'reason' => $clip->reason,
                     'title' => $clip->title,
                     'title_candidates' => $clip->title_candidates,
+                    'quality_summary' => $clip->quality_summary,
                     'video_path' => $clip->video_path,
                     'subtitles_ass_path' => $clip->subtitles_ass_path,
                     'subtitles_srt_path' => $clip->subtitles_srt_path,
@@ -80,6 +81,14 @@ class ClipController
             'title' => $clip->title,
             'title_candidates' => $clip->title_candidates,
             'quality_summary' => $clip->quality_summary,
+
+            'tiktok_caption' => $clip->tiktok_caption,
+            'tiktok_account_id' => $clip->tiktok_account_id ? (string) $clip->tiktok_account_id : null,
+            'tiktok_publish_job_id' => $clip->tiktok_publish_job_id,
+            'tiktok_publish_status' => $clip->tiktok_publish_status,
+            'tiktok_publish_error' => $clip->tiktok_publish_error,
+            'tiktok_published_at' => $clip->tiktok_published_at?->toISOString(),
+
             'video_path' => $clip->video_path,
             'subtitles_ass_path' => $clip->subtitles_ass_path,
             'subtitles_srt_path' => $clip->subtitles_srt_path,
@@ -95,6 +104,21 @@ class ClipController
             'created_at' => $clip->created_at?->toISOString(),
             'updated_at' => $clip->updated_at?->toISOString(),
         ]);
+    }
+
+    public function update(Request $request, Clip $clip): JsonResponse
+    {
+        $data = $request->validate([
+            'tiktok_caption' => ['sometimes', 'nullable', 'string', 'max:2200'],
+        ]);
+
+        if (array_key_exists('tiktok_caption', $data)) {
+            $clip->forceFill([
+                'tiktok_caption' => $data['tiktok_caption'],
+            ])->save();
+        }
+
+        return $this->show($request, $clip->refresh());
     }
 
     public function destroy(Request $request, Clip $clip): Response
