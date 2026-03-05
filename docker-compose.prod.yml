@@ -215,6 +215,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      VIDEO_WORKER_REDIS_URL: ${VIDEO_WORKER_REDIS_URL:-redis://redis:6379/0}
       VIDEO_WORKER_STORAGE_PATH: ${VIDEO_WORKER_STORAGE_PATH:-/shared/storage}
       VIDEO_WORKER_TARGET_FPS: ${VIDEO_WORKER_TARGET_FPS:-30}
       VIDEO_WORKER_ENABLE_LOUDNORM: ${VIDEO_WORKER_ENABLE_LOUDNORM:-false}
