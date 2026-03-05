@@ -49,15 +49,20 @@
   },
   "projectNew": {
     "title": "Nouveau projet",
-    "subtitle": "Collez une URL YouTube et lancez le traitement.",
+    "subtitle": "Choisissez une source et lancez le traitement.",
     "back": "Retour",
     "form": {
       "nameLabel": "Nom du projet",
       "namePlaceholder": "Ex: Best of Podcast #12",
+      "sourceLabel": "Source",
+      "sourceYoutube": "URL YouTube",
+      "sourceLocal": "Fichier local",
       "urlLabel": "URL YouTube",
       "urlPlaceholder": "https://www.youtube.com/watch?v=…",
       "urlValid": "URL valide",
       "urlInvalid": "URL invalide",
+      "localFileLabel": "Fichier vidéo local",
+      "localFileHint": "Choisissez un fichier vidéo à uploader",
       "optionsTitle": "Options",
       "optionsHint": "Vous pourrez ajuster plus finement après (V1.1).",
       "languageLabel": "Langue",
@@ -81,7 +86,10 @@
       "subtitleTemplateCinematicKaraoke": "Cinematic (karaoke)",
       "originalityLabel": "Mode originalité",
       "originalityHint": "Ajoute une transformation (ex: voiceover). Ne garantit pas l’absence de copyright.",
-      "create": "Créer le projet"
+      "create": "Créer le projet",
+      "errors": {
+        "missingLocalFile": "Choisissez un fichier vidéo."
+      }
     }
   },
   "project": {

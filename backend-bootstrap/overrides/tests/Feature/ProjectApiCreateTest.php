@@ -71,4 +71,33 @@ class ProjectApiCreateTest extends TestCase
             ])
             ->assertUnprocessable();
     }
+
+    public function test_internal_api_project_create_accepts_local_video_path(): void
+    {
+        config()->set('admin.internal_api_secret', 'test-secret');
+
+        $root = sys_get_temp_dir().DIRECTORY_SEPARATOR.'shared-root-'.\Illuminate\Support\Str::random(8);
+        @mkdir($root, 0777, true);
+        config()->set('admin.shared_storage_root', $root);
+
+        $path = $root.DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'uploads';
+        @mkdir($path, 0777, true);
+
+        $video = $path.DIRECTORY_SEPARATOR.'source.mp4';
+        file_put_contents($video, 'video');
+
+        $response = $this->withHeader('X-Internal-Secret', 'test-secret')
+            ->postJson('/api/projects', [
+                'name' => 'Local Test',
+                'local_video_path' => $video,
+            ])
+            ->assertCreated();
+
+        $projectId = (string) $response->json('id');
+
+        $project = Project::query()->findOrFail($projectId);
+        $this->assertSame('local', $project->source_type);
+        $this->assertNull($project->youtube_url);
+        $this->assertSame(realpath($video), realpath((string) $project->local_video_path));
+    }
 }

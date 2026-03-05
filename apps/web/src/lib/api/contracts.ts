@@ -81,7 +81,8 @@ export type ApiProjectOptions = {
 export type ApiProjectListItem = {
   id: string;
   name: string;
-  youtube_url: string;
+  source_type: 'youtube' | 'local';
+  youtube_url: string | null;
   status: ApiProjectStatus;
   stage: string | null;
   progress_percent: number | null;
@@ -96,7 +97,9 @@ export type ApiProjectsIndexResponse = {
 export type ApiProjectDetail = {
   id: string;
   name: string;
-  youtube_url: string;
+  source_type: 'youtube' | 'local';
+  youtube_url: string | null;
+  local_video_path: string | null;
   status: ApiProjectStatus;
   stage: string | null;
   progress_percent: number | null;
@@ -114,7 +117,8 @@ export type ApiProjectDetail = {
 
 export type ApiCreateProjectRequest = {
   name: string;
-  youtube_url: string;
+  youtube_url?: string;
+  local_video_path?: string;
 
   language?: ApiProjectLanguage | null;
   subtitles_enabled?: boolean;

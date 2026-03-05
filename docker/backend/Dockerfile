@@ -34,4 +34,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && npm install -g npm \
     && rm -rf /var/lib/apt/lists/*
 
+COPY uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+
 WORKDIR /var/www/backend

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\ProjectController;
+use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\WorkerCallbackController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -10,6 +11,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
+
+Route::middleware('internal.secret')->post('/uploads/video', [UploadController::class, 'video']);
 
 Route::middleware('internal.secret')->get('/projects', [ProjectController::class, 'index']);
 Route::middleware('internal.secret')->post('/projects', [ProjectController::class, 'store']);

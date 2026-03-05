@@ -15,7 +15,9 @@ class Project extends Model
 
     protected $fillable = [
         'name',
+        'source_type',
         'youtube_url',
+        'local_video_path',
 
         'language',
         'subtitles_enabled',

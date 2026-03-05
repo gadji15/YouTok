@@ -16,15 +16,16 @@ from .pipeline.clip import render_clips
 from .pipeline.voiceover import build_voiceover_overrides
 from .pipeline.context import JobContext
 from .pipeline.download import download_youtube_video
-from .pipeline.segment import segment_candidates, write_clips_json
+from .pipeline.segment import load_clips_json, segment_candidates, write_clips_json
 from .pipeline.subtitles import write_srt
 from .pipeline.title_generator import generate_title_candidates_for_clip
-from .pipeline.transcribe import transcribe_audio, write_transcript_json
+from .pipeline.transcribe import load_transcript_json, transcribe_audio, write_transcript_json
 from .pipeline.transcript_cleanup import cleanup_transcript_segments
 from .pipeline.transcript_normalize import normalize_transcript_segments
 from .pipeline.word_alignment import (
     align_words_with_whisperx,
     approximate_words_from_segments,
+    load_words_json,
     write_words_json,
 )
 from .redis_conn import get_redis
@@ -72,6 +73,25 @@ def _best_effort_progress_callback(
     logger: structlog.BoundLogger,
 ) -> None:
     logger.info("job.stage", stage=stage, progress_percent=progress_percent, message=message)
+
+    # Checkpoint (Part 2): persist the last known stage/progress so the pipeline can resume.
+    try:
+        atomic_write_text(
+            ctx.project_artifacts_dir / "pipeline_state.json",
+            json.dumps(
+                {
+                    "job_id": ctx.job_id,
+                    "project_id": ctx.project_id,
+                    "stage": stage,
+                    "progress_percent": int(progress_percent),
+                    "message": message,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
+    except Exception:
+        logger.exception("checkpoint.write_failed")
 
     _best_effort_callback(
         ctx=ctx,
@@ -260,14 +280,17 @@ def process_job(
             retry_backoff_seconds=settings.callback_retry_backoff_seconds,
             logger=logger,
         )
-        extract_audio_wav(
-            input_video=ctx.source_video_path,
-            output_wav=ctx.audio_path,
-            logger=logger,
-            normalize=settings.audio_extract_normalize_enabled,
-            denoise=settings.audio_extract_denoise_enabled,
-            max_retries=settings.audio_extract_max_retries,
-        )
+        if ctx.audio_path.exists() and ctx.audio_path.stat().st_size > 0:
+            logger.info("extract_audio.skip_existing", path=str(ctx.audio_path))
+        else:
+            extract_audio_wav(
+                input_video=ctx.source_video_path,
+                output_wav=ctx.audio_path,
+                logger=logger,
+                normalize=settings.audio_extract_normalize_enabled,
+                denoise=settings.audio_extract_denoise_enabled,
+                max_retries=settings.audio_extract_max_retries,
+            )
 
         raise_if_cancelled()
 
@@ -293,40 +316,56 @@ def process_job(
 
         initial_prompt = (settings.whisper_initial_prompt.strip() or default_prompt).strip() or None
 
-        segments = transcribe_audio(
-            audio_path=ctx.audio_path,
-            model_name=settings.whisper_model,
-            logger=logger,
-            language=language,
-            initial_prompt=initial_prompt,
-            device=settings.whisper_device,
-            temperature=settings.whisper_temperature,
-            beam_size=settings.whisper_beam_size,
-            best_of=settings.whisper_best_of,
-        )
+        loaded_transcript = False
+        segments = []
 
-        segments = normalize_transcript_segments(segments=segments)
+        if ctx.transcript_json_path.exists() and ctx.transcript_json_path.stat().st_size > 0:
+            try:
+                segments = load_transcript_json(path=ctx.transcript_json_path)
+                loaded_transcript = len(segments) > 0
+                if loaded_transcript:
+                    logger.info("transcribe.skip_existing", path=str(ctx.transcript_json_path), segment_count=len(segments))
+            except Exception:
+                logger.exception("transcribe.load_failed_retranscribe")
+                loaded_transcript = False
 
-        segments = cleanup_transcript_segments(
-            segments=segments,
-            language=language,
-            provider=settings.transcript_cleanup_provider,
-            openai_api_key=settings.openai_api_key,
-            openai_model=settings.openai_model,
-            openai_base_url=settings.openai_base_url,
-            logger=logger,
-        )
+        if not loaded_transcript:
+            segments = transcribe_audio(
+                audio_path=ctx.audio_path,
+                model_name=settings.whisper_model,
+                logger=logger,
+                language=language,
+                initial_prompt=initial_prompt,
+                device=settings.whisper_device,
+                temperature=settings.whisper_temperature,
+                beam_size=settings.whisper_beam_size,
+                best_of=settings.whisper_best_of,
+            )
 
-        write_transcript_json(
-            segments=segments,
-            output_path=ctx.transcript_json_path,
-            meta={
-                "model": settings.whisper_model,
-                "requested_language": language,
-                "initial_prompt": initial_prompt,
-                "cleanup_provider": settings.transcript_cleanup_provider,
-            },
-        )
+            segments = normalize_transcript_segments(segments=segments)
+
+            segments = cleanup_transcript_segments(
+                segments=segments,
+                language=language,
+                provider=settings.transcript_cleanup_provider,
+                openai_api_key=settings.openai_api_key,
+                openai_model=settings.openai_model,
+                openai_base_url=settings.openai_base_url,
+                logger=logger,
+            )
+
+            write_transcript_json(
+                segments=segments,
+                output_path=ctx.transcript_json_path,
+                meta={
+                    "model": settings.whisper_model,
+                    "requested_language": language,
+                    "initial_prompt": initial_prompt,
+                    "cleanup_provider": settings.transcript_cleanup_provider,
+                },
+            )
+
+        # Always (re)write SRT: cheap and ensures downstream consistency.
         write_srt(segments=segments, output_path=ctx.subtitles_srt_path)
 
         raise_if_cancelled()
@@ -344,18 +383,32 @@ def process_job(
             logger=logger,
         )
 
-        words = align_words_with_whisperx(
-            audio_path=ctx.audio_path,
-            segments=segments,
-            language=language,
-            logger=logger,
-            device=settings.whisper_device,
-        )
-        if words is None:
-            words = approximate_words_from_segments(segments=segments)
-            logger.info("align.fallback_approximate", word_count=len(words))
+        loaded_words = False
+        words = None
 
-        write_words_json(words=words, output_path=ctx.words_json_path)
+        if ctx.words_json_path.exists() and ctx.words_json_path.stat().st_size > 0:
+            try:
+                loaded = load_words_json(ctx.words_json_path)
+                if loaded:
+                    words = loaded
+                    loaded_words = True
+                    logger.info("align.skip_existing", path=str(ctx.words_json_path), word_count=len(words))
+            except Exception:
+                logger.exception("align.load_failed_realign")
+
+        if not loaded_words:
+            words = align_words_with_whisperx(
+                audio_path=ctx.audio_path,
+                segments=segments,
+                language=language,
+                logger=logger,
+                device=settings.whisper_device,
+            )
+            if words is None:
+                words = approximate_words_from_segments(segments=segments)
+                logger.info("align.fallback_approximate", word_count=len(words))
+
+            write_words_json(words=words, output_path=ctx.words_json_path)
 
         raise_if_cancelled()
 
@@ -379,42 +432,56 @@ def process_job(
             logger=logger,
         )
 
-        if effective_segmentation_mode == "chapters":
-            duration_seconds = float(probe_video(ctx.source_video_path).duration_seconds)
+        loaded_clips = False
+        clips = []
 
-            chapters = []
-            if ctx.youtube_url:
-                chapters = get_youtube_chapters(
-                    youtube_url=ctx.youtube_url,
-                    logger=logger,
-                    video_path=ctx.source_video_path,
-                )
+        if ctx.clips_json_path.exists() and ctx.clips_json_path.stat().st_size > 0:
+            try:
+                clips = load_clips_json(path=ctx.clips_json_path)
+                loaded_clips = len(clips) > 0
+                if loaded_clips:
+                    logger.info("segment.skip_existing", path=str(ctx.clips_json_path), clip_count=len(clips))
+            except Exception:
+                logger.exception("segment.load_failed_resegment")
+                loaded_clips = False
 
-            if chapters:
-                used_chapters = True
-                clips = build_chapter_clips(
-                    chapters=chapters,
-                    segments=segments,
-                    max_seconds=effective_max_seconds,
-                    min_seconds=effective_min_seconds,
-                )
+        if not loaded_clips:
+            if effective_segmentation_mode == "chapters":
+                duration_seconds = float(probe_video(ctx.source_video_path).duration_seconds)
+
+                chapters = []
+                if ctx.youtube_url:
+                    chapters = get_youtube_chapters(
+                        youtube_url=ctx.youtube_url,
+                        logger=logger,
+                        video_path=ctx.source_video_path,
+                    )
+
+                if chapters:
+                    used_chapters = True
+                    clips = build_chapter_clips(
+                        chapters=chapters,
+                        segments=segments,
+                        max_seconds=effective_max_seconds,
+                        min_seconds=effective_min_seconds,
+                    )
+                else:
+                    clips = build_sequential_clips(
+                        duration_seconds=duration_seconds,
+                        max_seconds=effective_max_seconds,
+                        min_seconds=effective_min_seconds,
+                    )
             else:
-                clips = build_sequential_clips(
-                    duration_seconds=duration_seconds,
-                    max_seconds=effective_max_seconds,
+                clips = segment_candidates(
+                    segments=segments,
                     min_seconds=effective_min_seconds,
+                    max_seconds=effective_max_seconds,
+                    max_clips=effective_max_clips,
+                    audio_path=ctx.audio_path,
+                    video_path=ctx.source_video_path,
+                    words=words,
+                    language=language,
                 )
-        else:
-            clips = segment_candidates(
-                segments=segments,
-                min_seconds=effective_min_seconds,
-                max_seconds=effective_max_seconds,
-                max_clips=effective_max_clips,
-                audio_path=ctx.audio_path,
-                video_path=ctx.source_video_path,
-                words=words,
-                language=language,
-            )
 
         raise_if_cancelled()
 
@@ -514,10 +581,13 @@ def process_job(
             ]
         }
 
-        atomic_write_text(
-            ctx.segments_json_path,
-            json.dumps(segments_payload, ensure_ascii=False, indent=2),
-        )
+        if not (ctx.segments_json_path.exists() and ctx.segments_json_path.stat().st_size > 0):
+            atomic_write_text(
+                ctx.segments_json_path,
+                json.dumps(segments_payload, ensure_ascii=False, indent=2),
+            )
+        else:
+            logger.info("segments.skip_existing", path=str(ctx.segments_json_path))
 
         raise_if_cancelled()
 

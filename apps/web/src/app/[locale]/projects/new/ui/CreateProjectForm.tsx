@@ -15,7 +15,10 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
   const router = useRouter();
 
   const [name, setName] = useState('');
+
+  const [sourceType, setSourceType] = useState<'youtube' | 'local'>('youtube');
   const [url, setUrl] = useState('');
+  const [localFile, setLocalFile] = useState<File | null>(null);
   const [language, setLanguage] = useState<'fr' | 'en' | 'auto'>('fr');
   const [segmentationMode, setSegmentationMode] = useState<'viral' | 'chapters'>('viral');
   const [outputAspect, setOutputAspect] = useState<'vertical' | 'source'>('vertical');
@@ -34,8 +37,13 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
 
   const videoId = useMemo(() => parseYoutubeVideoId(url), [url]);
   const urlOk = videoId !== null;
+  const localOk = localFile !== null;
+
   const nameOk = name.trim().length > 0;
-  const canSubmit = nameOk && urlOk && clipLengthOk;
+  const canSubmit =
+    nameOk &&
+    clipLengthOk &&
+    (sourceType === 'youtube' ? urlOk : localOk);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -47,6 +55,49 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
     setIsSubmitting(true);
     setSubmitError(null);
 
+    let localVideoPath: string | null = null;
+
+    if (sourceType === 'local') {
+      if (!localFile) {
+        setSubmitError(t('form.errors.missingLocalFile'));
+        setIsSubmitting(false);
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append('video', localFile);
+
+      const uploadRes = await fetch('/api/uploads/video', {
+        method: 'POST',
+        body: fd,
+      });
+
+      const uploadJson = (await uploadRes.json().catch(() => null)) as
+        | { local_video_path: string }
+        | { message?: string; errors?: Record<string, string[]> }
+        | null;
+
+      if (!uploadRes.ok || !uploadJson || !('local_video_path' in uploadJson)) {
+        const message =
+          (uploadJson &&
+            'message' in uploadJson &&
+            typeof uploadJson.message === 'string' &&
+            uploadJson.message) ||
+          (uploadJson && 'errors' in uploadJson && uploadJson.errors
+            ? Object.values(uploadJson.errors)
+                .flat()
+                .filter(Boolean)[0]
+            : null) ||
+          'Failed to upload video.';
+
+        setSubmitError(message);
+        setIsSubmitting(false);
+        return;
+      }
+
+      localVideoPath = uploadJson.local_video_path;
+    }
+
     const res = await fetch('/api/projects', {
       method: 'POST',
       headers: {
@@ -54,7 +105,9 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
       },
       body: JSON.stringify({
         name: name.trim(),
-        youtube_url: url.trim(),
+        ...(sourceType === 'youtube'
+          ? { youtube_url: url.trim() }
+          : { local_video_path: localVideoPath }),
         ...(language === 'auto' ? {} : { language }),
         subtitles_enabled: subtitlesEnabled,
         clip_min_seconds: 15,
@@ -107,37 +160,71 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
       </div>
 
       <div className="grid gap-2">
-        <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.urlLabel')}</label>
-        <Input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder={t('form.urlPlaceholder')}
-        />
-        <div
-          className={
-            'text-xs ' +
-            (url.length === 0
-              ? 'text-[var(--text-muted)]'
-              : urlOk
-                ? 'text-[var(--success)]'
-                : 'text-[var(--danger)]')
-          }
+        <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.sourceLabel')}</label>
+        <Select
+          value={sourceType}
+          onChange={(e) => {
+            const next = e.target.value as 'youtube' | 'local';
+            setSourceType(next);
+            setSubmitError(null);
+            if (next === 'youtube') {
+              setLocalFile(null);
+            } else {
+              setUrl('');
+            }
+          }}
         >
-          {url.length === 0 ? ' ' : urlOk ? t('form.urlValid') : t('form.urlInvalid')}
-        </div>
-
-        {videoId ? (
-          <div className="pt-2 motion-reduce:animate-none sm:animate-[youtok-page-enter_200ms_ease-out]">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[11px] font-medium text-[var(--text-muted)]">Preview</div>
-                <div className="mt-1 text-xs text-[var(--text-muted)]">{t('form.urlValid')}</div>
-              </div>
-              <YouTubeEmbed videoId={videoId} title={t('form.urlLabel')} size="sm" />
-            </div>
-          </div>
-        ) : null}
+          <option value="youtube">{t('form.sourceYoutube')}</option>
+          <option value="local">{t('form.sourceLocal')}</option>
+        </Select>
       </div>
+
+      {sourceType === 'youtube' ? (
+        <div className="grid gap-2">
+          <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.urlLabel')}</label>
+          <Input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder={t('form.urlPlaceholder')}
+          />
+          <div
+            className={
+              'text-xs ' +
+              (url.length === 0
+                ? 'text-[var(--text-muted)]'
+                : urlOk
+                  ? 'text-[var(--success)]'
+                  : 'text-[var(--danger)]')
+            }
+          >
+            {url.length === 0 ? ' ' : urlOk ? t('form.urlValid') : t('form.urlInvalid')}
+          </div>
+
+          {videoId ? (
+            <div className="pt-2 motion-reduce:animate-none sm:animate-[youtok-page-enter_200ms_ease-out]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-medium text-[var(--text-muted)]">Preview</div>
+                  <div className="mt-1 text-xs text-[var(--text-muted)]">{t('form.urlValid')}</div>
+                </div>
+                <YouTubeEmbed videoId={videoId} title={t('form.urlLabel')} size="sm" />
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="grid gap-2">
+          <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.localFileLabel')}</label>
+          <Input
+            type="file"
+            accept="video/*"
+            onChange={(e) => setLocalFile(e.target.files?.[0] ?? null)}
+          />
+          <div className="text-xs text-[var(--text-muted)]">
+            {localFile ? localFile.name : t('form.localFileHint')}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-xl border border-[color:var(--border)] bg-[var(--surface-muted)] p-4">
         <div className="text-sm font-semibold text-[var(--text)]">{t('form.optionsTitle')}</div>

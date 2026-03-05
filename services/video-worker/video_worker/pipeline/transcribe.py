@@ -154,3 +154,36 @@ def write_transcript_json(
         payload["meta"] = meta
 
     atomic_write_text(output_path, json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def load_transcript_json(*, path: Path) -> list[TranscriptSegment]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+
+    out: list[TranscriptSegment] = []
+    for seg in raw.get("segments", []) or []:
+        if not isinstance(seg, dict):
+            continue
+
+        start = seg.get("start")
+        end = seg.get("end")
+        text = seg.get("text")
+
+        if start is None or end is None or not isinstance(text, str):
+            continue
+
+        t = text.strip()
+        if not t:
+            continue
+
+        conf = seg.get("confidence")
+        out.append(
+            TranscriptSegment(
+                start_seconds=float(start),
+                end_seconds=float(end),
+                text=t,
+                confidence=float(conf) if conf is not None else None,
+            )
+        )
+
+    out.sort(key=lambda s: (s.start_seconds, s.end_seconds))
+    return out

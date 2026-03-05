@@ -15,6 +15,8 @@ use App\Support\Youtube;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ProjectController extends Controller
@@ -44,28 +46,73 @@ class ProjectController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'youtube_url' => [
-                'required',
+                'sometimes',
+                'nullable',
                 'url',
                 'max:2048',
                 static function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+
                     if (!is_string($value) || !Youtube::isValidUrl($value)) {
                         $fail('The YouTube URL must be a youtube.com or youtu.be link.');
                     }
                 },
             ],
+            'local_video_file' => ['sometimes', 'nullable', 'file'],
             'output_aspect' => ['sometimes', 'nullable', 'in:vertical,source'],
             'originality_enabled' => ['sometimes', 'boolean'],
         ]);
 
+        $youtubeUrl = trim((string) $request->input('youtube_url', ''));
+
+        $sourceType = 'youtube';
+        $localVideoPath = null;
+
+        if ($request->hasFile('local_video_file')) {
+            if ($youtubeUrl !== '') {
+                throw ValidationException::withMessages([
+                    'youtube_url' => ['Provide only one source: YouTube URL or local video file.'],
+                ]);
+            }
+
+            /** @var \Illuminate\Http\UploadedFile $file */
+            $file = $request->file('local_video_file');
+
+            $root = (string) config('admin.shared_storage_root', '/shared');
+            $destDir = rtrim($root, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'uploads';
+            @mkdir($destDir, 0777, true);
+
+            $ext = strtolower((string) $file->getClientOriginalExtension());
+            if ($ext === '' || !preg_match('/^[a-z0-9]{1,8}$/', $ext)) {
+                $ext = 'mp4';
+            }
+
+            $filename = 'upload_'.(string) Str::uuid().'.'.$ext;
+            $file->move($destDir, $filename);
+
+            $sourceType = 'local';
+            $localVideoPath = $destDir.DIRECTORY_SEPARATOR.$filename;
+        } else {
+            if ($youtubeUrl === '') {
+                throw ValidationException::withMessages([
+                    'youtube_url' => ['Provide a YouTube URL or upload a local video file.'],
+                ]);
+            }
+        }
+
         $project = Project::query()->create([
             'name' => $data['name'],
-            'youtube_url' => $data['youtube_url'],
+            'source_type' => $sourceType,
+            'youtube_url' => $sourceType === 'youtube' ? $youtubeUrl : null,
+            'local_video_path' => $sourceType === 'local' ? $localVideoPath : null,
             'output_aspect' => $request->input('output_aspect') ?? 'vertical',
             'originality_mode' => $request->boolean('originality_enabled') ? 'voiceover' : 'none',
             'status' => ProjectStatus::queued,
         ]);
 
-        PipelineEvent::log('project.created', payload: ['youtube_url' => $project->youtube_url], project: $project);
+        PipelineEvent::log('project.created', payload: ['source_type' => $sourceType], project: $project);
 
         SubmitVideoWorkerJob::dispatch((string) $project->id)->afterCommit();
 
@@ -131,6 +178,7 @@ class ProjectController extends Controller
 
         $project->load(['clips']);
 
+        SharedStorage::deleteFile($project->local_video_path);
         SharedStorage::deleteFile($project->source_video_path);
         SharedStorage::deleteFile($project->audio_path);
         SharedStorage::deleteFile($project->transcript_json_path);

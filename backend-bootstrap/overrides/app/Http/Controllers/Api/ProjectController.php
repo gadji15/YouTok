@@ -14,6 +14,7 @@ use App\Support\Youtube;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Validation\ValidationException;
 
 class ProjectController
 {
@@ -28,6 +29,7 @@ class ProjectController
             'data' => $projects->map(static fn (Project $project): array => [
                 'id' => (string) $project->id,
                 'name' => $project->name,
+                'source_type' => $project->source_type ?? 'youtube',
                 'youtube_url' => $project->youtube_url,
                 'status' => $project->status->value,
                 'stage' => $project->stage,
@@ -42,16 +44,24 @@ class ProjectController
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+
+            // Sources (Part 2): one of youtube_url OR local_video_path.
             'youtube_url' => [
-                'required',
+                'sometimes',
+                'nullable',
                 'url',
                 'max:2048',
                 static function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+
                     if (!is_string($value) || !Youtube::isValidUrl($value)) {
                         $fail('The YouTube URL must be a youtube.com or youtu.be link.');
                     }
                 },
             ],
+            'local_video_path' => ['sometimes', 'nullable', 'string', 'max:4096'],
 
             // Rendering options
             'language' => ['sometimes', 'nullable', 'in:fr,en'],
@@ -64,6 +74,34 @@ class ProjectController
             'output_aspect' => ['sometimes', 'nullable', 'in:vertical,source'],
         ]);
 
+        $youtubeUrl = trim((string) $request->input('youtube_url', ''));
+        $localVideoPath = trim((string) $request->input('local_video_path', ''));
+
+        if ($youtubeUrl === '' && $localVideoPath === '') {
+            throw ValidationException::withMessages([
+                'youtube_url' => ['Provide either youtube_url or local_video_path.'],
+            ]);
+        }
+
+        if ($youtubeUrl !== '' && $localVideoPath !== '') {
+            throw ValidationException::withMessages([
+                'youtube_url' => ['Provide only one source: youtube_url or local_video_path.'],
+            ]);
+        }
+
+        $sourceType = 'youtube';
+        $safeLocalPath = null;
+
+        if ($localVideoPath !== '') {
+            $sourceType = 'local';
+            $safeLocalPath = SharedStorage::resolveFileWithinRoot($localVideoPath);
+            if ($safeLocalPath === null) {
+                throw ValidationException::withMessages([
+                    'local_video_path' => ['Invalid local_video_path (must be an existing file inside shared storage).'],
+                ]);
+            }
+        }
+
         $clipMin = (int) ($request->input('clip_min_seconds', 15));
         $clipMax = (int) ($request->input('clip_max_seconds', 60));
 
@@ -71,7 +109,9 @@ class ProjectController
         // validated payload may omit optional keys (e.g. false boolean values).
         $project = Project::query()->create([
             'name' => $data['name'],
-            'youtube_url' => $data['youtube_url'],
+            'source_type' => $sourceType,
+            'youtube_url' => $sourceType === 'youtube' ? $youtubeUrl : null,
+            'local_video_path' => $sourceType === 'local' ? $safeLocalPath : null,
             'language' => $request->input('language'),
             'subtitles_enabled' => $request->boolean('subtitles_enabled', true),
             'clip_min_seconds' => $clipMin,
@@ -83,7 +123,11 @@ class ProjectController
             'status' => ProjectStatus::queued,
         ]);
 
-        PipelineEvent::log('project.created', payload: ['source' => 'api'], project: $project);
+        PipelineEvent::log('project.created', payload: [
+            'source' => 'api',
+            'source_type' => $sourceType,
+        ], project: $project);
+
         SubmitVideoWorkerJob::dispatch((string) $project->id)->afterCommit();
 
         return response()->json([
@@ -106,7 +150,9 @@ class ProjectController
         return response()->json([
             'id' => (string) $project->id,
             'name' => $project->name,
+            'source_type' => $project->source_type ?? 'youtube',
             'youtube_url' => $project->youtube_url,
+            'local_video_path' => $project->local_video_path,
             'status' => $project->status->value,
             'stage' => $project->stage,
             'progress_percent' => $project->progress_percent,
@@ -186,6 +232,7 @@ class ProjectController
             $videoWorker->cancelJob($project->worker_job_id);
         }
 
+        SharedStorage::deleteFile($project->local_video_path);
         SharedStorage::deleteFile($project->source_video_path);
         SharedStorage::deleteFile($project->audio_path);
         SharedStorage::deleteFile($project->transcript_json_path);

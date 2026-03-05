@@ -179,7 +179,7 @@ class Settings(BaseSettings):
     audio_extract_max_retries: int = Field(1, ge=0, le=5)
 
     transcript_cleanup_provider: str = Field(
-        "heuristic",
+        "openai",
         description="Transcript cleanup provider: none|heuristic|openai",
     )
 

@@ -107,7 +107,7 @@ export default async function ProjectDetailsPage({
     <div className="space-y-6">
       <PageHeader
         title={project.name}
-        description={project.youtube_url}
+        description={project.youtube_url ?? (project.source_type === 'local' ? 'Local video' : '')}
         actions={
           <>
             <Link

@@ -229,6 +229,29 @@ def render_clips(
         out_srt = clip_dir / "subtitles.srt"
         out_ass = clip_dir / "subtitles.ass"
 
+        # Fast path for resumed jobs: if the final video and subtitle files exist,
+        # skip all expensive subtitle placement + alignment work.
+        if out_video.exists() and out_video.stat().st_size > 0:
+            subs_ok = True
+            if subtitles_enabled:
+                subs_ok = out_srt.exists() and out_srt.stat().st_size > 0 and out_ass.exists() and out_ass.stat().st_size > 0
+
+            if subs_ok:
+                rendered.append(
+                    {
+                        "clip_id": clip.clip_id,
+                        "start_seconds": clip.start_seconds,
+                        "end_seconds": clip.end_seconds,
+                        "score": clip.score,
+                        "reason": clip.reason,
+                        "title": getattr(clip, "title", None),
+                        "video_path": str(out_video),
+                        "subtitles_ass_path": str(out_ass) if subtitles_enabled else None,
+                        "subtitles_srt_path": str(out_srt),
+                    }
+                )
+                continue
+
         clip_word_timings = (
             word_timings_by_clip_id.get(clip.clip_id)
             if word_timings_by_clip_id is not None and clip.clip_id in word_timings_by_clip_id

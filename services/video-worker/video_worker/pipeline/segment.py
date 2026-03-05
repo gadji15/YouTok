@@ -244,6 +244,75 @@ def segment_candidates(
         per_seg_score.append(score)
         per_seg_reasons.append(rs)
 
+    # Topic shift heuristic: prefer windows that stay semantically cohesive.
+    # We approximate "subject change" by measuring token overlap between adjacent transcript segments.
+    stop = {
+        "the",
+        "and",
+        "to",
+        "a",
+        "of",
+        "in",
+        "is",
+        "it",
+        "that",
+        "this",
+        "on",
+        "for",
+        "with",
+        "you",
+        "i",
+        "we",
+        "they",
+        "le",
+        "la",
+        "les",
+        "de",
+        "des",
+        "du",
+        "et",
+        "un",
+        "une",
+        "en",
+        "que",
+        "qui",
+        "pour",
+        "dans",
+        "est",
+        "ce",
+        "ça",
+        "ca",
+        "tu",
+        "vous",
+        "je",
+        "il",
+        "elle",
+        "ils",
+        "elles",
+    }
+
+    def _token_set(text: str) -> set[str]:
+        tokens = [t.lower() for t in _WORD_TOKEN_RE.findall(text or "")]
+        out = {t for t in tokens if len(t) >= 3 and t not in stop}
+        return out
+
+    seg_tokens = [_token_set(s.text) for s in segments]
+
+    topic_boundary_after: list[bool] = []
+    for a, b in zip(seg_tokens, seg_tokens[1:], strict=False):
+        if not a or not b:
+            topic_boundary_after.append(False)
+            continue
+
+        inter = len(a & b)
+        uni = len(a | b)
+        if uni < 8:
+            topic_boundary_after.append(False)
+            continue
+
+        jacc = inter / float(uni)
+        topic_boundary_after.append(jacc < 0.06)
+
     candidates: list[ClipCandidate] = []
 
     per_start_keep = max(1, int(candidates_per_start))
@@ -254,6 +323,7 @@ def segment_candidates(
         agg_score = 0.0
         reasons: dict[str, int] = {}
         scored_for_start: list[ClipCandidate] = []
+        topic_breaks = 0
 
         for j in range(i, len(segments)):
             end_t = float(segments[j].end_seconds)
@@ -262,6 +332,9 @@ def segment_candidates(
 
             for r in per_seg_reasons[j]:
                 reasons[r] = reasons.get(r, 0) + 1
+
+            if j > i and topic_boundary_after[j - 1]:
+                topic_breaks += 1
 
             if duration < min_seconds:
                 continue
@@ -273,7 +346,9 @@ def segment_candidates(
             length_penalty = 1.0 - 0.15 * abs(duration - target) / max(target, 0.001)
             length_penalty = max(0.6, min(1.0, length_penalty))
 
-            score = _clamp01(density * length_penalty)
+            topic_penalty = max(0.7, 1.0 - 0.08 * float(topic_breaks))
+
+            score = _clamp01(density * length_penalty * topic_penalty)
 
             top_reasons = sorted(reasons.items(), key=lambda kv: kv[1], reverse=True)[:3]
             reason_str = ",".join([r for r, _ in top_reasons]) or "baseline"
@@ -480,3 +555,41 @@ def write_clips_json(*, clips: list[ClipCandidate], output_path: Path) -> None:
     from ..utils.files import atomic_write_text
 
     atomic_write_text(output_path, json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def load_clips_json(*, path: Path) -> list[ClipCandidate]:
+    import json
+
+    raw = json.loads(path.read_text(encoding="utf-8"))
+
+    out: list[ClipCandidate] = []
+    for c in raw.get("clips", []) or []:
+        if not isinstance(c, dict):
+            continue
+
+        clip_id = str(c.get("clip_id") or "").strip()
+        start = c.get("start_seconds")
+        end = c.get("end_seconds")
+        score = c.get("score")
+        reason = c.get("reason")
+
+        if not clip_id or start is None or end is None or score is None or not isinstance(reason, str):
+            continue
+
+        title = c.get("title")
+        features = c.get("features")
+
+        out.append(
+            ClipCandidate(
+                clip_id=clip_id,
+                start_seconds=float(start),
+                end_seconds=float(end),
+                score=float(score),
+                reason=reason,
+                title=str(title) if isinstance(title, str) else None,
+                features=features if isinstance(features, dict) else None,
+            )
+        )
+
+    out.sort(key=lambda x: x.score, reverse=True)
+    return out

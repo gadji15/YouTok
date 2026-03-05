@@ -50,6 +50,12 @@ if [ "$(id -u)" = "0" ]; then
   chown -R "${DOCKER_UID:-1000}":"${DOCKER_GID:-1000}" /var/www/backend || true
   chmod -R ug+rwX /var/www/backend || true
 
+  # Ensure the shared volume is writable by the non-root runtime user (used for artifacts + uploads).
+  if [ -d /shared ]; then
+    chown -R "${DOCKER_UID:-1000}":"${DOCKER_GID:-1000}" /shared || true
+    chmod -R ug+rwX /shared || true
+  fi
+
   # Re-run the script as the non-root runtime user to avoid creating root-owned files
   # like backend/.env (root:root 0600).
   if [ -z "${BACKEND_INIT_DROPPED_PRIVS:-}" ] && command -v gosu >/dev/null 2>&1; then
