@@ -88,3 +88,7 @@ class JobContext:
     @property
     def pipeline_state_path(self) -> Path:
         return self.project_artifacts_dir / "pipeline_state.json"
+
+    @property
+    def title_candidates_json_path(self) -> Path:
+        return self.project_artifacts_dir / "title_candidates.json"

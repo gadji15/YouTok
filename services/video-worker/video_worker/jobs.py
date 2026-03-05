@@ -39,6 +39,104 @@ class JobCancelledError(RuntimeError):
     pass
 
 
+def _load_title_candidates_json(path: Path) -> dict[str, dict] | None:
+    if not path.exists() or path.stat().st_size <= 0:
+        return None
+
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        return None
+
+    clips = raw.get("clips")
+    if not isinstance(clips, dict):
+        return None
+
+    out: dict[str, dict] = {}
+    for k, v in clips.items():
+        if isinstance(k, str) and k and isinstance(v, dict):
+            out[k] = v
+
+    return out
+
+
+def _write_title_candidates_json(*, path: Path, title_candidates_by_clip_id: dict[str, dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(
+        path,
+        json.dumps(
+            {
+                "clips": title_candidates_by_clip_id,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+    )
+
+
+def _ensure_title_candidates_for_clips(
+    *,
+    clips,
+    segments,
+    language: str | None,
+    used_chapters: bool,
+    provider: str,
+    openai_api_key: str | None,
+    openai_model: str,
+    openai_base_url: str | None,
+    logger: structlog.BoundLogger,
+    existing: dict[str, dict] | None = None,
+    generate_fn=generate_title_candidates_for_clip,
+) -> tuple[dict[str, dict], list]:
+    title_candidates_by_clip_id: dict[str, dict] = dict(existing or {})
+
+    updated_clips = []
+
+    for c in clips:
+        clip_id = str(getattr(c, "clip_id", "") or "")
+        if not clip_id:
+            updated_clips.append(c)
+            continue
+
+        payload = title_candidates_by_clip_id.get(clip_id)
+        if not isinstance(payload, dict):
+            res = generate_fn(
+                clip=c,
+                segments=segments,
+                language=language,
+                provider=provider,
+                openai_api_key=openai_api_key,
+                openai_model=openai_model,
+                openai_base_url=openai_base_url,
+                logger=logger.bind(clip_id=clip_id),
+            )
+
+            payload = res.to_payload()
+            title_candidates_by_clip_id[clip_id] = payload
+
+            if used_chapters and getattr(c, "title", None):
+                best_title = getattr(c, "title")
+            else:
+                best_title = res.candidates[0].title if res.candidates else getattr(c, "title", None)
+
+            updated_clips.append(
+                type(c)(
+                    clip_id=c.clip_id,
+                    start_seconds=c.start_seconds,
+                    end_seconds=c.end_seconds,
+                    score=c.score,
+                    reason=c.reason,
+                    title=best_title,
+                    features=getattr(c, "features", None),
+                )
+            )
+            continue
+
+        # Resume path: keep existing title on the clip to ensure deterministic outputs.
+        updated_clips.append(c)
+
+    return title_candidates_by_clip_id, updated_clips
+
+
 def _best_effort_callback(
     *,
     ctx: JobContext,
@@ -511,6 +609,10 @@ def process_job(
                     language=language,
                 )
 
+        # Resume-safe: if we're in chapters mode and clips already carry titles, keep them.
+        if effective_segmentation_mode == "chapters" and any(getattr(c, "title", None) for c in clips):
+            used_chapters = True
+
         raise_if_cancelled()
 
         current_stage = "titles"
@@ -531,45 +633,27 @@ def process_job(
             logger=logger,
         )
 
-        title_candidates_by_clip_id: dict[str, dict] = {}
-        updated_clips = []
+        existing_title_candidates = _load_title_candidates_json(ctx.title_candidates_json_path)
 
-        for c in clips:
-            raise_if_cancelled()
-
-            res = generate_title_candidates_for_clip(
-                clip=c,
-                segments=segments,
-                language=language,
-                provider=settings.title_provider,
-                openai_api_key=settings.openai_api_key,
-                openai_model=settings.openai_model,
-                openai_base_url=settings.openai_base_url,
-                logger=logger.bind(clip_id=c.clip_id),
-            )
-
-            title_payload = res.to_payload()
-            title_candidates_by_clip_id[c.clip_id] = title_payload
-
-            if used_chapters and c.title:
-                best_title = c.title
-            else:
-                best_title = res.candidates[0].title if res.candidates else c.title
-
-            updated_clips.append(
-                type(c)(
-                    clip_id=c.clip_id,
-                    start_seconds=c.start_seconds,
-                    end_seconds=c.end_seconds,
-                    score=c.score,
-                    reason=c.reason,
-                    title=best_title,
-                    features=getattr(c, "features", None),
-                )
-            )
+        title_candidates_by_clip_id, updated_clips = _ensure_title_candidates_for_clips(
+            clips=clips,
+            segments=segments,
+            language=language,
+            used_chapters=used_chapters,
+            provider=settings.title_provider,
+            openai_api_key=settings.openai_api_key,
+            openai_model=settings.openai_model,
+            openai_base_url=settings.openai_base_url,
+            logger=logger,
+            existing=existing_title_candidates,
+        )
 
         clips = updated_clips
         write_clips_json(clips=clips, output_path=ctx.clips_json_path)
+        _write_title_candidates_json(
+            path=ctx.title_candidates_json_path,
+            title_candidates_by_clip_id=title_candidates_by_clip_id,
+        )
 
         # Analysis output: segments with text + word timestamps (used downstream for subtitles/UI).
         def _collect_text_window(start: float, end: float) -> str:
