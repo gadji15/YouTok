@@ -24,6 +24,19 @@
                             <x-input-error class="mt-2" :messages="$errors->get('youtube_url')" />
                         </div>
 
+                        <div>
+                            <x-input-label for="output_aspect" value="Format" />
+                            <select
+                                id="output_aspect"
+                                name="output_aspect"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            >
+                                <option value="vertical" {{ old('output_aspect', 'vertical') === 'vertical' ? 'selected' : '' }}>Vertical (9:16)</option>
+                                <option value="source" {{ old('output_aspect', 'vertical') === 'source' ? 'selected' : '' }}>Original (YouTube)</option>
+                            </select>
+                            <x-input-error class="mt-2" :messages="$errors->get('output_aspect')" />
+                        </div>
+
                         <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-4">
                             <div>
                                 <div class="text-sm font-medium text-gray-900">Mode originalité</div>
