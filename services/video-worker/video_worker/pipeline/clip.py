@@ -140,6 +140,8 @@ def render_clips(
     output_aspect: str = "vertical",
     target_fps: int = 30,
     enable_loudnorm: bool = False,
+    stabilization_enabled: bool = True,
+    visual_enhance_enabled: bool = True,
     word_timings: list[WordTiming] | None = None,
     word_timings_by_clip_id: dict[str, list[WordTiming]] | None = None,
     audio_override_by_clip_id: dict[str, Path] | None = None,
@@ -594,6 +596,16 @@ def render_clips(
                 f"fps={fps}",
             ]
 
+        if stabilization_enabled:
+            # Conservative stabilization (no prior pass needed). Keeps the image stable without
+            # introducing heavy warping.
+            vf_parts.append("deshake=x=16:y=16:w=64:h=64:rx=16:ry=16:edge=mirror")
+
+        if visual_enhance_enabled:
+            # Mobile-first, conservative enhancements.
+            vf_parts.append("eq=contrast=1.06:saturation=1.05:brightness=0.01")
+            vf_parts.append("unsharp=5:5:0.8:3:3:0.4")
+
         if subtitles_enabled:
             vf_parts.append(f"ass={_ffmpeg_filter_escape_path(out_ass)}")
 
@@ -659,9 +671,9 @@ def render_clips(
                 "-crf",
                 "18",
                 "-maxrate",
-                "12M",
+                "10M",
                 "-bufsize",
-                "20M",
+                "12M",
                 "-x264-params",
                 f"keyint={gop}:min-keyint={gop}:scenecut=0",
                 "-c:a",

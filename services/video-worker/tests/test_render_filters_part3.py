@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import structlog
+
+from video_worker.pipeline.clip import render_clips
+from video_worker.pipeline.types import ClipCandidate, TranscriptSegment
+
+
+def test_render_clips_builds_filters_for_stabilization_and_visual_enhance(monkeypatch, tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(args, logger=None):
+        calls.append([str(a) for a in args])
+        # Create output file for the final ffmpeg render command.
+        if args and args[0] == "ffmpeg" and str(args[-1]).endswith("video.mp4"):
+            Path(args[-1]).parent.mkdir(parents=True, exist_ok=True)
+            Path(args[-1]).write_bytes(b"x")
+
+    monkeypatch.setattr("video_worker.pipeline.clip.run", fake_run)
+    monkeypatch.setattr(
+        "video_worker.pipeline.clip.probe_video",
+        lambda *_args, **_kwargs: type("V", (), {"width": 1920, "height": 1080})(),
+    )
+    monkeypatch.setattr("video_worker.pipeline.clip.estimate_face_center_x", lambda **_kwargs: 0.5)
+
+    clips = [ClipCandidate("clip_001", 0.0, 5.0, 0.9, "baseline")]
+    segs = [TranscriptSegment(0.0, 5.0, "hello")]
+
+    out = render_clips(
+        source_video=tmp_path / "src.mp4",
+        transcript_segments=segs,
+        clips=clips,
+        output_dir=tmp_path / "out",
+        logger=structlog.get_logger(),
+        subtitles_enabled=False,
+        output_aspect="vertical",
+        stabilization_enabled=True,
+        visual_enhance_enabled=True,
+    )
+
+    assert out and out[0]["clip_id"] == "clip_001"
+
+    ffmpeg_cmds = [c for c in calls if c and c[0] == "ffmpeg" and c[-1].endswith("video.mp4")]
+    assert len(ffmpeg_cmds) == 1
+
+    cmd = ffmpeg_cmds[0]
+    vf = cmd[cmd.index("-vf") + 1]
+
+    assert "deshake=" in vf
+    assert "eq=contrast=" in vf
+    assert "unsharp=" in vf
+
+    assert cmd[cmd.index("-maxrate") + 1] == "10M"
+    assert cmd[cmd.index("-bufsize") + 1] == "12M"

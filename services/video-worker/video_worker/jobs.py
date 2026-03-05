@@ -765,6 +765,8 @@ def process_job(
                 output_aspect=effective_output_aspect,
                 target_fps=settings.target_fps,
                 enable_loudnorm=settings.enable_loudnorm,
+                stabilization_enabled=settings.stabilization_enabled,
+                visual_enhance_enabled=settings.visual_enhance_enabled,
                 word_timings=render_word_timings,
                 word_timings_by_clip_id=render_word_timings_by_clip_id,
                 audio_override_by_clip_id=render_audio_override_by_clip_id,

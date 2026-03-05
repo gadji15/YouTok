@@ -129,6 +129,16 @@ class Settings(BaseSettings):
         description="If true, apply ffmpeg loudnorm to audio during render",
     )
 
+    stabilization_enabled: bool = Field(
+        True,
+        description="If true, apply a conservative video stabilization filter during render (deshake)",
+    )
+
+    visual_enhance_enabled: bool = Field(
+        True,
+        description="If true, apply conservative contrast/saturation/sharpening for mobile-first output",
+    )
+
     # Quality gate (Sprint 1): auto-correct subtitle placement if it overlaps faces/UI.
     quality_gate_enabled: bool = Field(
         False,
