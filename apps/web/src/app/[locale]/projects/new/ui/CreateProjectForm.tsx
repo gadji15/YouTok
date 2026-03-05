@@ -16,9 +16,13 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
 
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
-  const [language, setLanguage] = useState<'fr' | 'en'>('fr');
+  const [language, setLanguage] = useState<'fr' | 'en' | 'auto'>('fr');
+  const [segmentationMode, setSegmentationMode] = useState<'viral' | 'chapters'>('viral');
+  const [outputAspect, setOutputAspect] = useState<'vertical' | 'source'>('vertical');
   const [clipLength, setClipLength] = useState('180');
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
+  const [subtitleTemplate, setSubtitleTemplate] = useState('cinematic_karaoke');
+  const [originalityEnabled, setOriginalityEnabled] = useState(false);
 
   const clipMaxSeconds = useMemo(() => {
     const n = Number.parseInt(clipLength, 10);
@@ -51,11 +55,14 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
       body: JSON.stringify({
         name: name.trim(),
         youtube_url: url.trim(),
-        language,
+        ...(language === 'auto' ? {} : { language }),
         subtitles_enabled: subtitlesEnabled,
         clip_min_seconds: 60,
         clip_max_seconds: clipMaxSeconds,
-        subtitle_template: 'modern',
+        subtitle_template: subtitleTemplate,
+        segmentation_mode: segmentationMode,
+        output_aspect: outputAspect,
+        originality_mode: originalityEnabled ? 'voiceover' : 'none',
       }),
     });
 
@@ -124,15 +131,9 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-[11px] font-medium text-[var(--text-muted)]">Preview</div>
-                <div className="mt-1 text-xs text-[var(--text-muted)]">
-                  {t('form.urlValid')}
-                </div>
+                <div className="mt-1 text-xs text-[var(--text-muted)]">{t('form.urlValid')}</div>
               </div>
-              <YouTubeEmbed
-                videoId={videoId}
-                title={t('form.urlLabel')}
-                size="sm"
-              />
+              <YouTubeEmbed videoId={videoId} title={t('form.urlLabel')} size="sm" />
             </div>
           </div>
         ) : null}
@@ -145,9 +146,35 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           <div className="grid gap-2">
             <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.languageLabel')}</label>
-            <Select value={language} onChange={(e) => setLanguage(e.target.value as 'fr' | 'en')}>
+            <Select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as 'fr' | 'en' | 'auto')}
+            >
               <option value="fr">FR</option>
               <option value="en">EN</option>
+              <option value="auto">{t('form.languageAuto')}</option>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.segmentationLabel')}</label>
+            <Select
+              value={segmentationMode}
+              onChange={(e) => setSegmentationMode(e.target.value as 'viral' | 'chapters')}
+            >
+              <option value="viral">{t('form.segmentationViral')}</option>
+              <option value="chapters">{t('form.segmentationChapters')}</option>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.outputAspectLabel')}</label>
+            <Select
+              value={outputAspect}
+              onChange={(e) => setOutputAspect(e.target.value as 'vertical' | 'source')}
+            >
+              <option value="vertical">{t('form.outputAspectVertical')}</option>
+              <option value="source">{t('form.outputAspectSource')}</option>
             </Select>
           </div>
 
@@ -164,9 +191,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
           </div>
 
           <div className="grid gap-2">
-            <label className="text-xs font-medium text-[var(--text-muted)]">
-              {t('form.subtitlesLabel')}
-            </label>
+            <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.subtitlesLabel')}</label>
             <Select
               value={subtitlesEnabled ? 'on' : 'off'}
               onChange={(e) => setSubtitlesEnabled(e.target.value === 'on')}
@@ -174,6 +199,41 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
               <option value="on">{t('form.subtitlesOn')}</option>
               <option value="off">{t('form.subtitlesOff')}</option>
             </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.subtitleTemplateLabel')}</label>
+            <Select
+              value={subtitleTemplate}
+              onChange={(e) => setSubtitleTemplate(e.target.value)}
+              disabled={!subtitlesEnabled}
+            >
+              <option value="default">{t('form.subtitleTemplateDefault')}</option>
+              <option value="modern">{t('form.subtitleTemplateModern')}</option>
+              <option value="modern_karaoke">{t('form.subtitleTemplateModernKaraoke')}</option>
+              <option value="cinematic">{t('form.subtitleTemplateCinematic')}</option>
+              <option value="cinematic_karaoke">{t('form.subtitleTemplateCinematicKaraoke')}</option>
+            </Select>
+            <div className="text-xs text-[var(--text-muted)]">{t('form.subtitleTemplateHint')}</div>
+          </div>
+
+          <div className="grid gap-2 sm:col-span-3">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--border)] bg-[var(--surface)] p-3">
+              <div className="min-w-0">
+                <div className="text-xs font-medium text-[var(--text)]">{t('form.originalityLabel')}</div>
+                <div className="mt-1 text-xs text-[var(--text-muted)]">{t('form.originalityHint')}</div>
+              </div>
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  checked={originalityEnabled}
+                  onChange={(e) => setOriginalityEnabled(e.target.checked)}
+                  className="peer sr-only"
+                />
+                <div className="h-6 w-11 rounded-full bg-[color:var(--border)] transition-colors peer-checked:bg-[var(--accent)]" />
+                <div className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-[var(--surface)] shadow-sm transition-transform peer-checked:translate-x-5" />
+              </label>
+            </div>
           </div>
         </div>
       </div>

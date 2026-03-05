@@ -22,6 +22,9 @@ class Project extends Model
         'clip_min_seconds',
         'clip_max_seconds',
         'subtitle_template',
+        'segmentation_mode',
+        'originality_mode',
+        'output_aspect',
 
         'status',
         'stage',

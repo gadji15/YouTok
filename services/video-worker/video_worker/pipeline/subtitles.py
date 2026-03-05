@@ -77,6 +77,17 @@ def _ass_ts(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
+def _scale_font_size(*, base: int, play_res_x: int, play_res_y: int) -> int:
+    scaled = base * float(play_res_y) / 1920.0
+
+    # For landscape (YouTube/source) outputs, videos are often letterboxed on phone
+    # screens which makes subtitles feel smaller. Compensate slightly.
+    if play_res_x > play_res_y:
+        scaled *= 1.35
+
+    return max(30, min(112, int(round(scaled))))
+
+
 def _wrap(text: str, *, max_chars: int = 32) -> str:
     # break words that exceed max_chars to avoid horizontal overflow
     def _break_long_word(word: str) -> list[str]:
@@ -134,11 +145,17 @@ def write_stylized_ass_for_clip(
 
     template = (template or "default").lower().strip()
 
+    font_size = _scale_font_size(
+        base=74 if template == "default" else 78,
+        play_res_x=play_res_x,
+        play_res_y=play_res_y,
+    )
+
     # increase horizontal margins to give extra padding from screen edges
-    style_line = "Style: Default,Noto Sans,58,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,220,1"
+    style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,220,1"
     if template in {"modern", "modern_karaoke"}:
         # A cleaner, more modern look: slightly larger, stronger outline, and a safer bottom margin.
-        style_line = "Style: Default,Noto Sans,62,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,260,1"
+        style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,260,1"
 
     header = "\n".join(
         [
@@ -252,22 +269,30 @@ def write_word_level_ass_for_clip(
 
     cinematic = template in {"cinematic", "cinematic_karaoke"}
 
+    base_size = 78
+    if template == "default":
+        base_size = 74
+    elif template in {"cinematic", "cinematic_karaoke"}:
+        base_size = 84
+
+    font_size = _scale_font_size(base=base_size, play_res_x=play_res_x, play_res_y=play_res_y)
+
     # Styles:
     # - Karaoke: Primary = highlight, Secondary = base
     # - Non-karaoke: Primary = base
     if karaoke_enabled:
-        style_line = "Style: Default,Noto Sans,62,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
+        style_line = f"Style: Default,Noto Sans,{font_size},&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
         if template == "karaoke":
-            style_line = "Style: Default,Noto Sans,58,&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
+            style_line = f"Style: Default,Noto Sans,{font_size},&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
         if template == "cinematic_karaoke":
             # Larger, higher contrast, slightly stronger shadow.
-            style_line = "Style: Default,Noto Sans,66,&H0000C8FF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
+            style_line = f"Style: Default,Noto Sans,{font_size},&H0000C8FF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
     else:
-        style_line = "Style: Default,Noto Sans,62,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
+        style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
         if template == "default":
-            style_line = "Style: Default,Noto Sans,58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
+            style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
         if template == "cinematic":
-            style_line = "Style: Default,Noto Sans,66,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
+            style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
 
     header = "\n".join(
         [

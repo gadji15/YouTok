@@ -10,13 +10,16 @@ from .callback import ClipArtifact, JobArtifacts, JobCallbackPayload, JobStatus,
 from .config import get_settings
 from .logging import get_logger
 from .pipeline.audio import extract_audio_wav
+from .pipeline.chapters import build_chapter_clips, build_sequential_clips, get_youtube_chapters
 from .pipeline.clip import render_clips
+from .pipeline.voiceover import build_voiceover_overrides
 from .pipeline.context import JobContext
 from .pipeline.download import download_youtube_video
 from .pipeline.segment import segment_candidates, write_clips_json
 from .pipeline.subtitles import write_srt
 from .pipeline.title_generator import generate_title_candidates_for_clip
 from .pipeline.transcribe import transcribe_audio, write_transcript_json
+from .pipeline.transcript_normalize import normalize_transcript_segments
 from .pipeline.word_alignment import (
     align_words_with_whisperx,
     approximate_words_from_segments,
@@ -24,6 +27,7 @@ from .pipeline.word_alignment import (
 )
 from .redis_conn import get_redis
 from .utils.errors import format_exception_short
+from .utils.ffprobe import probe_video
 
 
 class JobCancelledError(RuntimeError):
@@ -90,21 +94,42 @@ def process_job(
     callback_url: str,
     callback_secret: str,
     language: str | None = None,
+    segmentation_mode: str | None = None,
     subtitles_enabled: bool | None = None,
     subtitle_template: str | None = None,
     clip_min_seconds: float | None = None,
     clip_max_seconds: float | None = None,
     max_clips: int | None = None,
+    originality_mode: str | None = None,
+    output_aspect: str | None = None,
 ) -> dict:
     settings = get_settings()
     logger = get_logger(service="video-worker", job_id=job_id, project_id=project_id)
 
+    effective_segmentation_mode = (segmentation_mode or "viral").strip().lower()
+    effective_originality_mode = (originality_mode or "none").strip().lower()
+    effective_output_aspect = (output_aspect or "vertical").strip().lower()
+
+    if effective_output_aspect not in {"vertical", "source"}:
+        effective_output_aspect = "vertical"
+
+    if effective_originality_mode not in {"none", "voiceover"}:
+        effective_originality_mode = "none"
+
+    if effective_originality_mode == "voiceover" and not settings.openai_api_key:
+        logger.warning("voiceover.disabled_missing_openai_key")
+        effective_originality_mode = "none"
+
     effective_min_seconds = settings.clip_min_seconds if clip_min_seconds is None else float(clip_min_seconds)
     effective_max_seconds = settings.clip_max_seconds if clip_max_seconds is None else float(clip_max_seconds)
 
-    # Product constraint: clips must be 1–3 minutes.
-    effective_min_seconds = max(60.0, effective_min_seconds)
-    effective_max_seconds = max(effective_min_seconds, min(180.0, effective_max_seconds))
+    # Product constraint (viral mode): clips must be 1–3 minutes.
+    if effective_segmentation_mode == "viral":
+        effective_min_seconds = max(60.0, effective_min_seconds)
+        effective_max_seconds = max(effective_min_seconds, min(180.0, effective_max_seconds))
+    else:
+        # Chapter/slice mode still uses clip_max_seconds as the slice size (<= 3 min).
+        effective_max_seconds = max(1.0, min(180.0, effective_max_seconds))
 
     effective_max_clips = settings.max_clips if max_clips is None else int(max_clips)
     effective_subtitles_enabled = (
@@ -205,17 +230,39 @@ def process_job(
             retry_backoff_seconds=settings.callback_retry_backoff_seconds,
             logger=logger,
         )
+        default_prompt = ""
+        if (language or "").strip().lower() == "fr" and not settings.whisper_initial_prompt.strip():
+            default_prompt = (
+                "Noms propres: Ibrahim, Muhammad. "
+                "Formules: sallallahu alayhi wa sallam; alayhi salam; alayhi wa sallam. "
+                "Mots: subhanallah, alhamdulillah, allahu akbar."
+            )
+
+        initial_prompt = (settings.whisper_initial_prompt.strip() or default_prompt).strip() or None
+
         segments = transcribe_audio(
             audio_path=ctx.audio_path,
             model_name=settings.whisper_model,
             logger=logger,
+            language=language,
+            initial_prompt=initial_prompt,
             device=settings.whisper_device,
             temperature=settings.whisper_temperature,
             beam_size=settings.whisper_beam_size,
             best_of=settings.whisper_best_of,
         )
 
-        write_transcript_json(segments=segments, output_path=ctx.transcript_json_path)
+        segments = normalize_transcript_segments(segments=segments)
+
+        write_transcript_json(
+            segments=segments,
+            output_path=ctx.transcript_json_path,
+            meta={
+                "model": settings.whisper_model,
+                "requested_language": language,
+                "initial_prompt": initial_prompt,
+            },
+        )
         write_srt(segments=segments, output_path=ctx.subtitles_srt_path)
 
         raise_if_cancelled()
@@ -250,36 +297,67 @@ def process_job(
 
         current_stage = "segment"
         current_progress = 70
+
+        used_chapters = False
+
+        segment_message = "Selecting clip candidates"
+        if effective_segmentation_mode == "chapters":
+            segment_message = "Building chapters/slices"
+
         _best_effort_progress_callback(
             ctx=ctx,
             stage=current_stage,
             progress_percent=current_progress,
-            message="Selecting clip candidates",
+            message=segment_message,
             timeout_seconds=settings.callback_timeout_seconds,
             max_retries=settings.callback_max_retries,
             retry_backoff_seconds=settings.callback_retry_backoff_seconds,
             logger=logger,
         )
-        clips = segment_candidates(
-            segments=segments,
-            min_seconds=effective_min_seconds,
-            max_seconds=effective_max_seconds,
-            max_clips=effective_max_clips,
-            audio_path=ctx.audio_path,
-            video_path=ctx.source_video_path,
-            words=words,
-            language=language,
-        )
+
+        if effective_segmentation_mode == "chapters":
+            duration_seconds = float(probe_video(ctx.source_video_path).duration_seconds)
+
+            chapters = get_youtube_chapters(
+                youtube_url=ctx.youtube_url,
+                logger=logger,
+                video_path=ctx.source_video_path,
+            )
+
+            if chapters:
+                used_chapters = True
+                clips = build_chapter_clips(chapters=chapters, segments=segments)
+            else:
+                clips = build_sequential_clips(
+                    duration_seconds=duration_seconds,
+                    max_seconds=effective_max_seconds,
+                )
+        else:
+            clips = segment_candidates(
+                segments=segments,
+                min_seconds=effective_min_seconds,
+                max_seconds=effective_max_seconds,
+                max_clips=effective_max_clips,
+                audio_path=ctx.audio_path,
+                video_path=ctx.source_video_path,
+                words=words,
+                language=language,
+            )
 
         raise_if_cancelled()
 
         current_stage = "titles"
         current_progress = 80
+
+        titles_message = "Generating viral titles"
+        if effective_segmentation_mode == "chapters":
+            titles_message = "Generating titles"
+
         _best_effort_progress_callback(
             ctx=ctx,
             stage=current_stage,
             progress_percent=current_progress,
-            message="Generating viral titles",
+            message=titles_message,
             timeout_seconds=settings.callback_timeout_seconds,
             max_retries=settings.callback_max_retries,
             retry_backoff_seconds=settings.callback_retry_backoff_seconds,
@@ -306,7 +384,10 @@ def process_job(
             title_payload = res.to_payload()
             title_candidates_by_clip_id[c.clip_id] = title_payload
 
-            best_title = res.candidates[0].title if res.candidates else c.title
+            if used_chapters and c.title:
+                best_title = c.title
+            else:
+                best_title = res.candidates[0].title if res.candidates else c.title
 
             updated_clips.append(
                 type(c)(
@@ -326,6 +407,46 @@ def process_job(
 
         current_stage = "render_clips"
         current_progress = 90
+
+        render_segments = segments
+        render_word_timings = words
+        render_word_timings_by_clip_id = None
+        render_audio_override_by_clip_id = None
+
+        if effective_originality_mode == "voiceover":
+            _best_effort_progress_callback(
+                ctx=ctx,
+                stage=current_stage,
+                progress_percent=88,
+                message="Generating voice-over",
+                timeout_seconds=settings.callback_timeout_seconds,
+                max_retries=settings.callback_max_retries,
+                retry_backoff_seconds=settings.callback_retry_backoff_seconds,
+                logger=logger,
+            )
+
+            render_segments, render_word_timings_by_clip_id, render_audio_override_by_clip_id = build_voiceover_overrides(
+                clips=clips,
+                transcript_segments=segments,
+                language=language,
+                openai_api_key=settings.openai_api_key,
+                openai_model=settings.openai_model,
+                openai_base_url=settings.openai_base_url,
+                tts_model=settings.tts_model,
+                tts_voice=settings.tts_voice,
+                tts_instructions=settings.tts_instructions,
+                whisper_model=settings.whisper_model,
+                whisper_device=settings.whisper_device,
+                whisper_temperature=settings.whisper_temperature,
+                whisper_beam_size=settings.whisper_beam_size,
+                whisper_best_of=settings.whisper_best_of,
+                whisper_initial_prompt=initial_prompt,
+                clips_dir=ctx.clips_dir,
+                logger=logger,
+            )
+
+            render_word_timings = None
+
         _best_effort_progress_callback(
             ctx=ctx,
             stage=current_stage,
@@ -336,17 +457,21 @@ def process_job(
             retry_backoff_seconds=settings.callback_retry_backoff_seconds,
             logger=logger,
         )
+
         rendered = render_clips(
             source_video=ctx.source_video_path,
-            transcript_segments=segments,
+            transcript_segments=render_segments,
             clips=clips,
             output_dir=ctx.clips_dir,
             logger=logger,
             subtitles_enabled=effective_subtitles_enabled,
             subtitle_template=effective_subtitle_template,
+            output_aspect=effective_output_aspect,
             target_fps=settings.target_fps,
             enable_loudnorm=settings.enable_loudnorm,
-            word_timings=words,
+            word_timings=render_word_timings,
+            word_timings_by_clip_id=render_word_timings_by_clip_id,
+            audio_override_by_clip_id=render_audio_override_by_clip_id,
             quality_gate_enabled=settings.quality_gate_enabled,
             quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
             quality_gate_max_attempts=settings.quality_gate_max_attempts,

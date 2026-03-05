@@ -68,6 +68,11 @@ class Settings(BaseSettings):
         description="Whisper best_of (used when temperature>0)",
     )
 
+    whisper_initial_prompt: str = Field(
+        "",
+        description="Optional Whisper initial prompt to bias transcription (e.g. names, domain vocabulary)",
+    )
+
     max_clips: int = Field(5, ge=1, le=50)
     clip_min_seconds: float = Field(60.0, ge=1)
     clip_max_seconds: float = Field(180.0, ge=1)
@@ -100,6 +105,21 @@ class Settings(BaseSettings):
     openai_base_url: str = Field(
         "https://api.openai.com/v1",
         description="OpenAI API base URL",
+    )
+
+    tts_model: str = Field(
+        "gpt-4o-mini-tts",
+        description="OpenAI TTS model used for originality_mode=voiceover",
+    )
+
+    tts_voice: str = Field(
+        "marin",
+        description="OpenAI TTS voice used for originality_mode=voiceover",
+    )
+
+    tts_instructions: str = Field(
+        "Speak clearly, with energetic but natural short-form narration.",
+        description="Prompt instructions sent to the OpenAI speech endpoint",
     )
 
     target_fps: int = Field(30, ge=1, le=60)

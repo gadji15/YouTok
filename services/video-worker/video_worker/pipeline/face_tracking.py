@@ -81,7 +81,7 @@ def estimate_face_centers_x(
         )
 
         detector = mp.solutions.face_detection.FaceDetection(
-            model_selection=0,
+            model_selection=1,
             min_detection_confidence=0.5,
         )
 
@@ -97,11 +97,21 @@ def estimate_face_centers_x(
             if not res.detections:
                 continue
 
-            det = res.detections[0]
+            # Pick the most prominent face (helps when there are multiple detections).
+            def _det_score(d) -> float:
+                try:
+                    bbox = d.location_data.relative_bounding_box
+                    area = float(max(0.0, bbox.width) * max(0.0, bbox.height))
+                    conf = float(d.score[0]) if getattr(d, "score", None) else 0.0
+                    return area * (0.5 + conf)
+                except Exception:
+                    return 0.0
+
+            det = max(res.detections, key=_det_score)
             bbox = det.location_data.relative_bounding_box
+
             cx_rel = float(bbox.xmin + bbox.width / 2.0)
-            if not (0.0 <= cx_rel <= 1.0):
-                continue
+            cx_rel = float(max(0.0, min(1.0, cx_rel)))
 
             t = float(start_seconds + (idx / max(0.001, float(sample_fps))))
             out.append(FaceCenterSample(t_seconds=t, x_rel=cx_rel))
