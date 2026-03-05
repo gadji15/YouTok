@@ -31,6 +31,12 @@ _WORD_CANON: dict[str, str] = {
     "mouhamed": "Muhammad",
     "mouhamad": "Muhammad",
     "mouhammad": "Muhammad",
+
+    # Common noisy transliterations (FR phonetics)
+    "salalahou": "sallallahu",
+    "sallalahou": "sallallahu",
+    "salallahu": "sallallahu",
+
     # Ibrahim
     "ibrahim": "Ibrahim",
 }
