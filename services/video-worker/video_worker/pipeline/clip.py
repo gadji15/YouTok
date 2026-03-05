@@ -251,7 +251,7 @@ def render_clips(
                         "reason": clip.reason,
                         "title": getattr(clip, "title", None),
                         "video_path": str(out_video),
-                        "subtitles_ass_path": str(out_ass) if subtitles_enabled else None,
+                        "subtitles_ass_path": str(out_ass) if (out_ass.exists() and out_ass.stat().st_size > 0) else None,
                         "subtitles_srt_path": str(out_srt),
                     }
                 )
@@ -408,8 +408,6 @@ def render_clips(
                     play_res_x=play_res_x,
                     play_res_y=play_res_y,
                     template=subtitle_template,
-                    max_words_per_line=subtitle_max_words_per_line,
-                    max_chars_per_line=subtitle_max_chars_per_line,
                 )
                 used_source = "word_timings"
             else:
@@ -429,8 +427,6 @@ def render_clips(
                         play_res_x=play_res_x,
                         play_res_y=play_res_y,
                         template=subtitle_template,
-                        max_words_per_line=subtitle_max_words_per_line,
-                        max_chars_per_line=subtitle_max_chars_per_line,
                     )
                     used_source = "approximate"
                 else:
@@ -444,6 +440,22 @@ def render_clips(
                         template=subtitle_template,
                     )
                     used_source = "stylized"
+
+            # Final safety net: never let rendering fail just because ASS generation failed.
+            if not (out_ass.exists() and out_ass.stat().st_size > 0):
+                try:
+                    write_stylized_ass_for_clip(
+                        clip_start_seconds=clip.start_seconds,
+                        clip_end_seconds=clip.end_seconds,
+                        segments=transcript_segments,
+                        output_path=out_ass,
+                        play_res_x=play_res_x,
+                        play_res_y=play_res_y,
+                        template=subtitle_template,
+                    )
+                    used_source = used_source + "_fallback_stylized"
+                except Exception:
+                    logger.exception("subtitles.ass_fallback_failed", clip_id=clip.clip_id)
 
             stats = _best_effort_log_ass_stats(ass_path=out_ass, clip_id=clip.clip_id, source=used_source)
 
@@ -516,7 +528,7 @@ def render_clips(
                     "reason": clip.reason,
                     "title": getattr(clip, "title", None),
                     "video_path": str(out_video),
-                    "subtitles_ass_path": str(out_ass) if subtitles_enabled else None,
+                    "subtitles_ass_path": str(out_ass) if (out_ass.exists() and out_ass.stat().st_size > 0) else None,
                     "subtitles_srt_path": str(out_srt),
                 }
             )
@@ -664,7 +676,8 @@ def render_clips(
             vf_parts.append("eq=contrast=1.06:saturation=1.05:brightness=0.01")
             vf_parts.append("unsharp=5:5:0.8:3:3:0.4")
 
-        if subtitles_enabled:
+        clip_subtitles_enabled = subtitles_enabled and out_ass.exists() and out_ass.stat().st_size > 0
+        if clip_subtitles_enabled:
             vf_parts.append(f"ass={_ffmpeg_filter_escape_path(out_ass)}")
 
         # TikTok-friendly encode settings:
@@ -752,7 +765,7 @@ def render_clips(
         # Quality gate rerender loop: if subtitles overlap faces/UI on the final video,
         # regenerate the ASS with an alternative placement and re-render.
         attempt_placements: list[tuple[int, int, int]] = []
-        if subtitles_enabled and placement is not None:
+        if clip_subtitles_enabled and placement is not None:
             attempt_placements.append((placement.alignment, placement.x, placement.y))
 
             if quality_gate_enabled:
@@ -934,7 +947,7 @@ def render_clips(
                 "reason": clip.reason,
                 "title": getattr(clip, "title", None),
                 "video_path": str(out_video),
-                "subtitles_ass_path": str(out_ass) if subtitles_enabled else None,
+                "subtitles_ass_path": str(out_ass) if (out_ass.exists() and out_ass.stat().st_size > 0) else None,
                 "subtitles_srt_path": str(out_srt),
             }
         )

@@ -76,6 +76,9 @@ class ProjectApiCreateTest extends TestCase
     {
         config()->set('admin.internal_api_secret', 'test-secret');
 
+        // Prevent real worker submissions during tests.
+        Bus::fake();
+
         $root = sys_get_temp_dir().DIRECTORY_SEPARATOR.'shared-root-'.\Illuminate\Support\Str::random(8);
         @mkdir($root, 0777, true);
         config()->set('admin.shared_storage_root', $root);
@@ -99,5 +102,9 @@ class ProjectApiCreateTest extends TestCase
         $this->assertSame('local', $project->source_type);
         $this->assertNull($project->youtube_url);
         $this->assertSame(realpath($video), realpath((string) $project->local_video_path));
+
+        Bus::assertDispatched(SubmitVideoWorkerJob::class, function (SubmitVideoWorkerJob $job) use ($projectId): bool {
+            return $job->projectId === $projectId;
+        });
     }
 }
