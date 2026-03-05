@@ -68,6 +68,15 @@
                                 <option value="cinematic_karaoke"
                                     {{ old('subtitle_template', 'cinematic_karaoke') === 'cinematic_karaoke' ? 'selected' : '' }}>
                                     Cinematic (karaoke)</option>
+                                <option value="storytelling_karaoke"
+                                    {{ old('subtitle_template', 'cinematic_karaoke') === 'storytelling_karaoke' ? 'selected' : '' }}>
+                                    Storytelling (viral)</option>
+                                <option value="podcast_karaoke"
+                                    {{ old('subtitle_template', 'cinematic_karaoke') === 'podcast_karaoke' ? 'selected' : '' }}>
+                                    Podcast (karaoke)</option>
+                                <option value="motivation_karaoke"
+                                    {{ old('subtitle_template', 'cinematic_karaoke') === 'motivation_karaoke' ? 'selected' : '' }}>
+                                    Motivation (viral)</option>
                             </select>
                             <div class="mt-1 text-sm text-gray-600">Choisissez un style (on pourra en ajouter d’autres).
                             </div>

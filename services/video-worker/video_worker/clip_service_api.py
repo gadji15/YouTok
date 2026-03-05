@@ -66,6 +66,10 @@ class RenderRequest(BaseModel):
 
     subtitles_enabled: bool = True
     subtitle_template: str = "default"
+    subtitle_max_words_per_line: int = Field(6, ge=1, le=12)
+    subtitle_max_chars_per_line: int = Field(36, ge=10, le=80)
+    subtitle_clip_realign_enabled: bool = False
+
     output_aspect: str = "vertical"
     target_fps: int = 30
     enable_loudnorm: bool = False
@@ -135,6 +139,9 @@ def render(req: RenderRequest) -> dict[str, Any]:
         logger=logger,
         subtitles_enabled=req.subtitles_enabled,
         subtitle_template=req.subtitle_template,
+        subtitle_max_words_per_line=req.subtitle_max_words_per_line,
+        subtitle_max_chars_per_line=req.subtitle_max_chars_per_line,
+        subtitle_clip_realign_enabled=req.subtitle_clip_realign_enabled,
         output_aspect=req.output_aspect,
         target_fps=req.target_fps,
         enable_loudnorm=req.enable_loudnorm,

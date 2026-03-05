@@ -300,6 +300,9 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
               <option value="modern_karaoke">{t('form.subtitleTemplateModernKaraoke')}</option>
               <option value="cinematic">{t('form.subtitleTemplateCinematic')}</option>
               <option value="cinematic_karaoke">{t('form.subtitleTemplateCinematicKaraoke')}</option>
+              <option value="storytelling_karaoke">{t('form.subtitleTemplateStorytelling')}</option>
+              <option value="podcast_karaoke">{t('form.subtitleTemplatePodcast')}</option>
+              <option value="motivation_karaoke">{t('form.subtitleTemplateMotivation')}</option>
             </Select>
             <div className="text-xs text-[var(--text-muted)]">{t('form.subtitleTemplateHint')}</div>
           </div>

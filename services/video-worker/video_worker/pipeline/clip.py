@@ -137,6 +137,9 @@ def render_clips(
     logger: structlog.BoundLogger,
     subtitles_enabled: bool = True,
     subtitle_template: str = "default",
+    subtitle_max_words_per_line: int = 6,
+    subtitle_max_chars_per_line: int = 36,
+    subtitle_clip_realign_enabled: bool = False,
     output_aspect: str = "vertical",
     target_fps: int = 30,
     enable_loudnorm: bool = False,
@@ -299,11 +302,9 @@ def render_clips(
                     logger=logger.bind(clip_id=clip.clip_id),
                 )
 
-        # Attempt to produce word-level timings and an ASS via the bundled tools.
-        # NOTE: This runs inside the worker image where the package lives at /app/video_worker.
-        # If clip audio is overridden (voiceover mode), skip this step (it would align against
-        # the original source audio and produce incorrect subtitles).
-        if clip_audio_override is None:
+        # Optional: best-effort per-clip re-alignment (Part 4).
+        # This is slower but can improve timing precision for word-level subtitles.
+        if subtitles_enabled and subtitle_clip_realign_enabled and clip_audio_override is None:
             try:
                 tools_dir = Path(__file__).resolve().parents[1] / "tools"
 
@@ -332,7 +333,6 @@ def render_clips(
                 ]
                 run(ff_args, logger=logger.bind(clip_id=clip.clip_id))
 
-                # run whisperx_align.py (best-effort)
                 wxa = tools_dir / "whisperx_align.py"
                 if wxa.exists():
                     run(
@@ -340,40 +340,49 @@ def render_clips(
                         logger=logger.bind(clip_id=clip.clip_id),
                     )
 
-                # If words.json produced, call make_ass to create an ASS file
-                mak = tools_dir / "make_ass.py"
-                if words_json.exists() and mak.exists():
-                    cmd = [
-                        "python3",
-                        str(mak),
-                        "--words",
-                        str(words_json),
-                        "--out",
-                        str(out_ass),
-                        "--video",
-                        str(source_video),
-                        "--play-res-x",
-                        str(play_res_x),
-                        "--play-res-y",
-                        str(play_res_y),
-                        "--template",
-                        str(subtitle_template),
-                        "--ui-safe-ymin",
-                        str(effective_ui_safe_ymin),
-                    ]
+                if words_json.exists() and words_json.stat().st_size > 0:
+                    raw = json.loads(words_json.read_text(encoding="utf-8"))
+                    if isinstance(raw, list):
+                        tool_words: list[WordTiming] = []
+                        for w in raw:
+                            if not isinstance(w, dict):
+                                continue
 
-                    if placement is not None:
-                        cmd += [
-                            "--an",
-                            str(placement.alignment),
-                            "--x",
-                            str(placement.x),
-                            "--y",
-                            str(placement.y),
-                        ]
+                            word = str(w.get("word") or "").strip()
+                            if not word:
+                                continue
 
-                    run(cmd, logger=logger.bind(clip_id=clip.clip_id))
-                    tool_ass_generated = out_ass.exists() and out_ass.stat().st_size > 0
+                            s = w.get("start_seconds")
+                            e = w.get("end_seconds")
+                            if s is None or e is None:
+                                continue
+
+                            tool_words.append(
+                                WordTiming(
+                                    word=word,
+                                    start_seconds=float(clip.start_seconds) + float(s),
+                                    end_seconds=float(clip.start_seconds) + float(e),
+                                    confidence=float(w.get("confidence")) if w.get("confidence") is not None else None,
+                                )
+                            )
+
+                        if tool_words:
+                            tool_words.sort(key=lambda x: (x.start_seconds, x.end_seconds))
+                            clip_word_timings = tool_words
+
+                            write_word_level_ass_for_clip(
+                                clip_start_seconds=clip.start_seconds,
+                                clip_end_seconds=clip.end_seconds,
+                                words=tool_words,
+                                output_path=out_ass,
+                                placement=(placement.alignment, placement.x, placement.y) if placement is not None else None,
+                                play_res_x=play_res_x,
+                                play_res_y=play_res_y,
+                                template=subtitle_template,
+                                max_words_per_line=subtitle_max_words_per_line,
+                                max_chars_per_line=subtitle_max_chars_per_line,
+                            )
+                            tool_ass_generated = out_ass.exists() and out_ass.stat().st_size > 0
             except Exception:
                 logger.exception("external_ass_generation_failed", clip_id=clip.clip_id)
 
@@ -399,6 +408,8 @@ def render_clips(
                     play_res_x=play_res_x,
                     play_res_y=play_res_y,
                     template=subtitle_template,
+                    max_words_per_line=subtitle_max_words_per_line,
+                    max_chars_per_line=subtitle_max_chars_per_line,
                 )
                 used_source = "word_timings"
             else:
@@ -418,6 +429,8 @@ def render_clips(
                         play_res_x=play_res_x,
                         play_res_y=play_res_y,
                         template=subtitle_template,
+                        max_words_per_line=subtitle_max_words_per_line,
+                        max_chars_per_line=subtitle_max_chars_per_line,
                     )
                     used_source = "approximate"
                 else:
@@ -483,7 +496,10 @@ def render_clips(
                         play_res_x=play_res_x,
                         play_res_y=play_res_y,
                         template=subtitle_template,
+                        max_words_per_line=subtitle_max_words_per_line,
+                        max_chars_per_line=subtitle_max_chars_per_line,
                     )
+                    used_source = "approximate"
                     _best_effort_log_ass_stats(
                         ass_path=out_ass,
                         clip_id=clip.clip_id,
@@ -769,6 +785,8 @@ def render_clips(
                     play_res_x=play_res_x,
                     play_res_y=play_res_y,
                     template=subtitle_template,
+                    max_words_per_line=subtitle_max_words_per_line,
+                    max_chars_per_line=subtitle_max_chars_per_line,
                 )
                 return
 
@@ -783,6 +801,8 @@ def render_clips(
                     play_res_x=play_res_x,
                     play_res_y=play_res_y,
                     template=subtitle_template,
+                    max_words_per_line=subtitle_max_words_per_line,
+                    max_chars_per_line=subtitle_max_chars_per_line,
                 )
                 return
 

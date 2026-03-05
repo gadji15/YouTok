@@ -151,11 +151,13 @@ def write_stylized_ass_for_clip(
         play_res_y=play_res_y,
     )
 
+    secondary = "&H0000FFFF" if template in {"karaoke", "modern_karaoke"} else "&H00FFFFFF"
+
     # increase horizontal margins to give extra padding from screen edges
-    style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,220,1"
+    style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,{secondary},&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,220,1"
     if template in {"modern", "modern_karaoke"}:
         # A cleaner, more modern look: slightly larger, stronger outline, and a safer bottom margin.
-        style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H000000FF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,260,1"
+        style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,{secondary},&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,260,1"
 
     header = "\n".join(
         [
@@ -233,8 +235,9 @@ def write_word_level_ass_for_clip(
     play_res_x: int = 1080,
     play_res_y: int = 1920,
     template: str = "modern_karaoke",
-    max_words_per_line: int = 10,
-    max_chars_per_line: int = 42,
+    # Part 4: short, punchy captions. Target 3–6 words per line.
+    max_words_per_line: int = 6,
+    max_chars_per_line: int = 36,
 ) -> None:
     r"""Generate a word-timed .ass file.
 
@@ -253,6 +256,16 @@ def write_word_level_ass_for_clip(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     template = (template or "modern_karaoke").lower().strip()
+
+    # Product templates (Part 4). These map to internal render styles.
+    template = {
+        "storytelling": "cinematic_karaoke",
+        "storytelling_karaoke": "cinematic_karaoke",
+        "podcast": "modern",
+        "podcast_karaoke": "modern_karaoke",
+        "motivation": "cinematic",
+        "motivation_karaoke": "cinematic_karaoke",
+    }.get(template, template)
 
     def _clean_text(t: str) -> str:
         t = t.replace("{", "(").replace("}", ")")
@@ -278,15 +291,17 @@ def write_word_level_ass_for_clip(
     font_size = _scale_font_size(base=base_size, play_res_x=play_res_x, play_res_y=play_res_y)
 
     # Styles:
-    # - Karaoke: Primary = highlight, Secondary = base
+    # - Karaoke (VSFilter): Primary = base, Secondary = highlight
     # - Non-karaoke: Primary = base
     if karaoke_enabled:
-        style_line = f"Style: Default,Noto Sans,{font_size},&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
+        # Karaoke convention (VSFilter): Primary = base text, Secondary = highlight.
+        # Part 4 default: white text + yellow active word.
+        style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H0000FFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
         if template == "karaoke":
-            style_line = f"Style: Default,Noto Sans,{font_size},&H0000C8FF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
+            style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H0000FFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,120,1"
         if template == "cinematic_karaoke":
             # Larger, higher contrast, slightly stronger shadow.
-            style_line = f"Style: Default,Noto Sans,{font_size},&H0000C8FF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
+            style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H0000FFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
     else:
         style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,160,1"
         if template == "default":
@@ -527,11 +542,12 @@ def write_word_level_ass_for_clip(
         return bool(k) and k in hook_words
 
     def _split_two_lines(parts: list[str], lens: list[int]) -> tuple[list[str], list[str]]:
-        # split text parts into two lines, breaking overlong words if necessary
+        # Split text parts into up to two lines.
+        # Goal (Part 4): keep lines short (<= max_words_per_line) and balanced.
+
         def _break_part(p: str) -> list[str]:
             if len(p) <= max_chars_per_line:
                 return [p]
-            # break mid-part on max_chars_per_line boundaries
             return [p[i : i + max_chars_per_line] for i in range(0, len(p), max_chars_per_line)]
 
         expanded_parts: list[str] = []
@@ -543,8 +559,50 @@ def write_word_level_ass_for_clip(
                 expanded_lens.extend([len(s) for s in subs])
             else:
                 expanded_parts.append(p)
-                expanded_lens.append(ln)
+                expanded_lens.append(int(ln))
 
+        if not expanded_parts:
+            return [], []
+
+        def _line_char_len(ws_lens: list[int]) -> int:
+            if not ws_lens:
+                return 0
+            return int(sum(ws_lens) + max(0, len(ws_lens) - 1))
+
+        total_chars = _line_char_len(expanded_lens)
+        if len(expanded_parts) <= max_words_per_line and total_chars <= max_chars_per_line:
+            return expanded_parts, []
+
+        # Search for a good split point.
+        best_split = None
+        best_score = None
+
+        for split in range(1, len(expanded_parts)):
+            l1_lens = expanded_lens[:split]
+            l2_lens = expanded_lens[split:]
+
+            if len(l1_lens) > max_words_per_line or len(l2_lens) > max_words_per_line:
+                continue
+
+            c1 = _line_char_len(l1_lens)
+            c2 = _line_char_len(l2_lens)
+
+            if c1 > max_chars_per_line or c2 > max_chars_per_line:
+                continue
+
+            # Prefer balanced lines and avoid super-short second line.
+            score = abs(c1 - c2) + abs(len(l1_lens) - len(l2_lens)) * 2
+            if min(len(l1_lens), len(l2_lens)) <= 1:
+                score += 10
+
+            if best_score is None or score < best_score:
+                best_score = score
+                best_split = split
+
+        if best_split is not None:
+            return expanded_parts[:best_split], expanded_parts[best_split:]
+
+        # Fallback: greedy fill line1 then spill to line2.
         line1: list[str] = []
         line2: list[str] = []
         c1 = 0
@@ -557,20 +615,16 @@ def write_word_level_ass_for_clip(
             fits1 = (len(line1) < max_words_per_line) and (c1 + add1 <= max_chars_per_line)
             fits2 = (len(line2) < max_words_per_line) and (c2 + add2 <= max_chars_per_line)
 
-            if line2:
-                if fits2:
-                    line2.append(p)
-                    c2 += add2
-                else:
-                    # Best-effort: overflow, but avoid dropping words.
-                    line2.append(p)
+            if not line2 and fits1:
+                line1.append(p)
+                c1 += add1
+                continue
+
+            if fits2:
+                line2.append(p)
+                c2 += add2
             else:
-                if fits1:
-                    line1.append(p)
-                    c1 += add1
-                else:
-                    line2.append(p)
-                    c2 += add2
+                line2.append(p)
 
         return line1, line2
 
@@ -667,6 +721,14 @@ def write_word_level_ass_for_clip(
 
         cur.append(w)
         cur_chars += add
+
+        # Punchline-friendly split: if we hit a sentence terminator, close the chunk.
+        if len(cur) >= 3 and w.word and w.word[-1] in {".", "!", "?", "…"}:
+            dur = cur[-1].end_seconds - cur[0].start_seconds
+            if dur >= 0.9:
+                chunks.append(cur)
+                cur = []
+                cur_chars = 0
 
     if cur:
         chunks.append(cur)

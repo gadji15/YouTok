@@ -84,7 +84,31 @@ class Settings(BaseSettings):
 
     subtitle_template: str = Field(
         "modern_karaoke",
-        description="Subtitle template: default|modern|karaoke|modern_karaoke|cinematic|cinematic_karaoke",
+        description=(
+            "Subtitle template: default|modern|karaoke|modern_karaoke|cinematic|cinematic_karaoke|"
+            "storytelling|podcast|motivation"
+        ),
+    )
+
+    subtitle_max_words_per_line: int = Field(
+        6,
+        ge=1,
+        le=12,
+        description="Max words per subtitle line (Part 4: 3–6 recommended)",
+    )
+
+    subtitle_max_chars_per_line: int = Field(
+        36,
+        ge=10,
+        le=80,
+        description="Max characters per subtitle line (Part 4: keep short for mobile)",
+    )
+
+    subtitle_clip_realign_enabled: bool = Field(
+        False,
+        description=(
+            "If true, run a best-effort per-clip word re-alignment pass (slower but can improve timing precision)"
+        ),
     )
 
     title_provider: str = Field(
