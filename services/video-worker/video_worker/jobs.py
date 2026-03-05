@@ -812,7 +812,16 @@ def process_job(
 
                 with httpx.Client(timeout=60.0) as client:
                     res = client.post(base + "/render", json=payload)
-                    res.raise_for_status()
+                    try:
+                        res.raise_for_status()
+                    except httpx.HTTPStatusError:
+                        logger.error(
+                            "clip_service.render_failed",
+                            status_code=res.status_code,
+                            response_text=(res.text or "")[:4000],
+                        )
+                        raise
+
                     data = res.json()
 
                 return data.get("clips") or []

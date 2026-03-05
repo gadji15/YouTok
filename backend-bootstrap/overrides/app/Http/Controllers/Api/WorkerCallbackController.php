@@ -188,6 +188,19 @@ class WorkerCallbackController
             );
         }
 
+        if (!empty($payload['error'])) {
+            PipelineEvent::log(
+                type: 'worker.error',
+                message: (string) $payload['error'],
+                payload: [
+                    'job_id' => $incomingJobId,
+                    'stage' => $payload['stage'] ?? null,
+                    'status' => $payload['status'],
+                ],
+                project: $project,
+            );
+        }
+
         $effectiveStatus = $project->status;
 
         if ($effectiveStatus === ProjectStatus::failed) {

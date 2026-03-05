@@ -4,6 +4,7 @@ from pathlib import Path
 
 import json
 import structlog
+import subprocess
 
 from ..utils.ffprobe import probe_video
 from ..utils.subprocess import run

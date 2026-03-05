@@ -6,6 +6,8 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from .utils.errors import format_exception_short
+
 from .config import get_settings
 from .logging import get_logger
 from .pipeline.clip import render_clips
@@ -130,28 +132,34 @@ def render(req: RenderRequest) -> dict[str, Any]:
         else None
     )
 
-    # Delegate to the shared render engine.
-    rendered = render_clips(
-        source_video=source_video,
-        transcript_segments=transcript,
-        clips=clips,
-        output_dir=output_dir,
-        logger=logger,
-        subtitles_enabled=req.subtitles_enabled,
-        subtitle_template=req.subtitle_template,
-        subtitle_max_words_per_line=req.subtitle_max_words_per_line,
-        subtitle_max_chars_per_line=req.subtitle_max_chars_per_line,
-        subtitle_clip_realign_enabled=req.subtitle_clip_realign_enabled,
-        output_aspect=req.output_aspect,
-        target_fps=req.target_fps,
-        enable_loudnorm=req.enable_loudnorm,
-        stabilization_enabled=req.stabilization_enabled,
-        visual_enhance_enabled=req.visual_enhance_enabled,
-        word_timings=words,
-        ui_safe_ymin=req.ui_safe_ymin,
-        quality_gate_enabled=settings.quality_gate_enabled,
-        quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
-        quality_gate_max_attempts=settings.quality_gate_max_attempts,
-    )
+    try:
+        # Delegate to the shared render engine.
+        rendered = render_clips(
+            source_video=source_video,
+            transcript_segments=transcript,
+            clips=clips,
+            output_dir=output_dir,
+            logger=logger,
+            subtitles_enabled=req.subtitles_enabled,
+            subtitle_template=req.subtitle_template,
+            subtitle_max_words_per_line=req.subtitle_max_words_per_line,
+            subtitle_max_chars_per_line=req.subtitle_max_chars_per_line,
+            subtitle_clip_realign_enabled=req.subtitle_clip_realign_enabled,
+            output_aspect=req.output_aspect,
+            target_fps=req.target_fps,
+            enable_loudnorm=req.enable_loudnorm,
+            stabilization_enabled=req.stabilization_enabled,
+            visual_enhance_enabled=req.visual_enhance_enabled,
+            word_timings=words,
+            ui_safe_ymin=req.ui_safe_ymin,
+            quality_gate_enabled=settings.quality_gate_enabled,
+            quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
+            quality_gate_max_attempts=settings.quality_gate_max_attempts,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("clip_service.render_exception")
+        raise HTTPException(status_code=500, detail=format_exception_short(e))
 
     return {"clips": rendered}
