@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from functools import lru_cache
 
 import httpx
 import structlog
@@ -24,6 +25,7 @@ _FILLERS_FR = {
 }
 
 
+_WORD_RE = re.compile(r"\b[\w']+\b", re.UNICODE)
 
 
 def _clean_whitespace(s: str) -> str:
@@ -85,7 +87,32 @@ def heuristic_cleanup_text(text: str, *, language: str) -> str:
     return text
 
 
-_WORD_RE = re.compile(r"\b[\w']+\b", re.UNICODE)
+def _edit_distance_limited(a: str, b: str, limit: int) -> int:
+    # Early-exit Levenshtein for small limits.
+    if a == b:
+        return 0
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        cur = [i]
+        row_min = cur[0]
+        for j, cb in enumerate(b, start=1):
+            ins = cur[j - 1] + 1
+            dele = prev[j] + 1
+            sub = prev[j - 1] + (0 if ca == cb else 1)
+            v = min(ins, dele, sub)
+            cur.append(v)
+            if v < row_min:
+                row_min = v
+
+        if row_min > limit:
+            return limit + 1
+        prev = cur
+
+    return prev[-1]
+
 
 try:
     from spellchecker import SpellChecker as _SpellChecker  # type: ignore
@@ -93,63 +120,75 @@ except Exception:  # pragma: no cover
     _SpellChecker = None
 
 
-def _spellcheck_text(text: str, *, language: str) -> str:
-    """Best-effort spelling correction.
-
-    This is intentionally conservative:
-    - only corrects fully lowercase tokens
-    - skips short tokens and tokens with digits
-
-    If pyspellchecker isn't installed, returns the input unchanged.
-    """
-
+@lru_cache(maxsize=4)
+def _get_spellchecker(lang: str):
     if _SpellChecker is None:
-        return text
+        return None
 
-    lang = (language or "en").strip().lower()
-    if lang not in {"fr", "en"}:
-        lang = "en"
-
-    sp = _SpellChecker(language=lang)
-
-    tokens = [m.group(0) for m in _WORD_RE.finditer(text or "")]
-    if not tokens:
-        return text
-
-    candidates = [t for t in tokens if t == t.lower() and t.isalpha() and len(t) >= 3]
-    if not candidates:
-        return text
-
-    unknown = sp.unknown(candidates)
-    if not unknown:
-        return text
-
-    replacements: dict[str, str] = {}
-    for w in unknown:
-        corr = sp.correction(w)
-        if not corr or not isinstance(corr, str):
-            continue
-        corr = corr.strip()
-        if not corr or corr == w:
-            continue
-        replacements[w] = corr
-
-    if not replacements:
-        return text
-
-    def _sub(m: re.Match[str]) -> str:
-        tok = m.group(0)
-        if tok in replacements:
-            return replacements[tok]
-        return tok
-
-    return _WORD_RE.sub(_sub, text)
+    try:
+        return _SpellChecker(language=lang)
+    except Exception:
+        return _SpellChecker(language="en")
 
 
 def spellcheck_cleanup_text(text: str, *, language: str) -> str:
-    # Heuristic cleanup first (remove fillers/repeats), then run conservative spellcheck.
+    # Heuristic cleanup first (remove fillers/repeats), then conservative spellcheck.
     cleaned = heuristic_cleanup_text(text, language=language)
-    return _spellcheck_text(cleaned, language=language)
+    if not cleaned:
+        return ""
+
+    lang = (language or "en").strip().lower()
+    sc = _get_spellchecker(lang)
+    if sc is None:
+        return cleaned
+
+    tokens = [m.group(0) for m in _WORD_RE.finditer(cleaned)]
+    candidates = [
+        t
+        for t in tokens
+        if t == t.lower() and t.isalpha() and len(t) >= 3 and "'" not in t
+    ]
+
+    if not candidates:
+        return cleaned
+
+    unknown = sc.unknown(candidates)
+    if not unknown:
+        return cleaned
+
+    replacements: dict[str, str] = {}
+    for w in unknown:
+        corr = sc.correction(w)
+        if not corr or not isinstance(corr, str):
+            continue
+
+        corr = corr.strip()
+        if not corr or corr == w:
+            continue
+
+        if len(w) <= 4:
+            limit = 2
+        elif len(w) <= 7:
+            limit = 1
+        else:
+            limit = 2
+
+        if _edit_distance_limited(w, corr, limit) > limit:
+            continue
+
+        replacements[w] = corr
+
+    if not replacements:
+        return cleaned
+
+    def _sub(m: re.Match[str]) -> str:
+        tok = m.group(0)
+        return replacements.get(tok, tok)
+
+    return _clean_whitespace(_WORD_RE.sub(_sub, cleaned))
+
+
+
 
 
 _OPENAI_PROMPT = """You are a transcription cleaner.

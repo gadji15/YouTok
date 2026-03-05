@@ -32,10 +32,6 @@ class VideoWorkerClient
             'callback_url' => $callbackUrl,
             'callback_secret' => $callbackSecret,
 
-            // Source (Part 2): YouTube URL OR local file path.
-            'youtube_url' => $project->youtube_url,
-            'local_video_path' => $project->local_video_path,
-
             // Options (stored on Project so retries are deterministic)
             'language' => $project->language,
             'subtitles_enabled' => (bool) ($project->subtitles_enabled ?? true),
@@ -47,11 +43,11 @@ class VideoWorkerClient
             'output_aspect' => $project->output_aspect ?? 'vertical',
         ];
 
-        // Enforce one-of source to satisfy the video-worker API contract.
-        if (is_string($payload['local_video_path']) && $payload['local_video_path'] !== '') {
-            $payload['youtube_url'] = null;
+        // Source (Part 2): exactly one of youtube_url or local_video_path.
+        if (is_string($project->local_video_path) && $project->local_video_path !== '') {
+            $payload['local_video_path'] = $project->local_video_path;
         } else {
-            $payload['local_video_path'] = null;
+            $payload['youtube_url'] = $project->youtube_url;
         }
 
         $response = $this->post(
