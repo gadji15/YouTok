@@ -36,16 +36,28 @@ def seconds_to_ass_time(s: float) -> str:
     return f"{h:d}:{m:02d}:{sec:06.3f}"[:-1]
 
 
-def _scale_font_size(base: int, *, play_res_y: int) -> int:
-    scaled = int(round(base * float(play_res_y) / 1920.0))
-    return max(26, min(96, scaled))
+def _scale_font_size(*, base: int, play_res_x: int, play_res_y: int) -> int:
+    scaled = base * float(play_res_y) / 1920.0
+
+    # For landscape (YouTube/source) outputs, videos are often letterboxed on phone
+    # screens which makes subtitles feel smaller. Compensate slightly.
+    if play_res_x > play_res_y:
+        scaled *= 1.35
+
+    return max(30, min(112, int(round(scaled))))
 
 
-def _style_font_size(template: str, *, play_res_y: int) -> int:
+def _style_font_size(template: str, *, play_res_x: int, play_res_y: int) -> int:
     template = (template or "modern_karaoke").lower().strip()
-    if template in {"cinematic", "cinematic_karaoke"}:
-        return _scale_font_size(66, play_res_y=play_res_y)
-    return _scale_font_size(62, play_res_y=play_res_y)
+
+    if template == "default":
+        base = 74
+    elif template in {"cinematic", "cinematic_karaoke"}:
+        base = 84
+    else:
+        base = 78
+
+    return _scale_font_size(base=base, play_res_x=play_res_x, play_res_y=play_res_y)
 
 
 def make_ass_header(
@@ -58,7 +70,7 @@ def make_ass_header(
 ) -> str:
     template = (template or "modern_karaoke").lower().strip()
 
-    font_size = _style_font_size(template, play_res_y=play_res_y)
+    font_size = _style_font_size(template, play_res_x=play_res_x, play_res_y=play_res_y)
 
     if template in {"cinematic", "cinematic_karaoke"}:
         style = (
@@ -233,7 +245,7 @@ def write_ass(
     if x is None or y is None:
         x, y = compute_position_default(play_res_x=play_res_x, play_res_y=play_res_y, ui_safe_ymin=ui_safe_ymin)
 
-    font_size = _style_font_size(template, play_res_y=play_res_y)
+    font_size = _style_font_size(template, play_res_x=play_res_x, play_res_y=play_res_y)
     approx_char_w = max(8.0, font_size * 0.55)
     safe_width_px = max(200, int(play_res_x - margin_l - margin_r))
     max_chars = max(18, int(safe_width_px / approx_char_w))
