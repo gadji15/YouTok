@@ -19,6 +19,7 @@ from .pipeline.segment import segment_candidates, write_clips_json
 from .pipeline.subtitles import write_srt
 from .pipeline.title_generator import generate_title_candidates_for_clip
 from .pipeline.transcribe import transcribe_audio, write_transcript_json
+from .pipeline.transcript_normalize import normalize_transcript_segments
 from .pipeline.word_alignment import (
     align_words_with_whisperx,
     approximate_words_from_segments,
@@ -229,17 +230,39 @@ def process_job(
             retry_backoff_seconds=settings.callback_retry_backoff_seconds,
             logger=logger,
         )
+        default_prompt = ""
+        if (language or "").strip().lower() == "fr" and not settings.whisper_initial_prompt.strip():
+            default_prompt = (
+                "Noms propres: Ibrahim, Muhammad. "
+                "Formules: sallallahu alayhi wa sallam; alayhi salam; alayhi wa sallam. "
+                "Mots: subhanallah, alhamdulillah, allahu akbar."
+            )
+
+        initial_prompt = (settings.whisper_initial_prompt.strip() or default_prompt).strip() or None
+
         segments = transcribe_audio(
             audio_path=ctx.audio_path,
             model_name=settings.whisper_model,
             logger=logger,
+            language=language,
+            initial_prompt=initial_prompt,
             device=settings.whisper_device,
             temperature=settings.whisper_temperature,
             beam_size=settings.whisper_beam_size,
             best_of=settings.whisper_best_of,
         )
 
-        write_transcript_json(segments=segments, output_path=ctx.transcript_json_path)
+        segments = normalize_transcript_segments(segments=segments)
+
+        write_transcript_json(
+            segments=segments,
+            output_path=ctx.transcript_json_path,
+            meta={
+                "model": settings.whisper_model,
+                "requested_language": language,
+                "initial_prompt": initial_prompt,
+            },
+        )
         write_srt(segments=segments, output_path=ctx.subtitles_srt_path)
 
         raise_if_cancelled()
@@ -417,6 +440,7 @@ def process_job(
                 whisper_temperature=settings.whisper_temperature,
                 whisper_beam_size=settings.whisper_beam_size,
                 whisper_best_of=settings.whisper_best_of,
+                whisper_initial_prompt=initial_prompt,
                 clips_dir=ctx.clips_dir,
                 logger=logger,
             )
@@ -436,7 +460,7 @@ def process_job(
 
         rendered = render_clips(
             source_video=ctx.source_video_path,
-            transcript_segments=segments,
+            transcript_segments=render_segments,
             clips=clips,
             output_dir=ctx.clips_dir,
             logger=logger,
@@ -445,7 +469,9 @@ def process_job(
             output_aspect=effective_output_aspect,
             target_fps=settings.target_fps,
             enable_loudnorm=settings.enable_loudnorm,
-            word_timings=words,
+            word_timings=render_word_timings,
+            word_timings_by_clip_id=render_word_timings_by_clip_id,
+            audio_override_by_clip_id=render_audio_override_by_clip_id,
             quality_gate_enabled=settings.quality_gate_enabled,
             quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
             quality_gate_max_attempts=settings.quality_gate_max_attempts,

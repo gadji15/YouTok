@@ -46,6 +46,8 @@ def transcribe_audio(
     audio_path: Path,
     model_name: str,
     logger: structlog.BoundLogger,
+    language: str | None = None,
+    initial_prompt: str | None = None,
     device: str = "auto",
     temperature: float = 0.0,
     beam_size: int = 1,
@@ -58,6 +60,8 @@ def transcribe_audio(
         model=model_name,
         audio_path=str(audio_path),
         device=chosen_device,
+        language=language,
+        has_initial_prompt=bool(initial_prompt and initial_prompt.strip()),
         temperature=temperature,
         beam_size=beam_size,
         best_of=best_of,
@@ -66,9 +70,16 @@ def transcribe_audio(
     def _do_transcribe(chosen: str) -> dict[str, Any]:
         model = _load_whisper_model(model_name, chosen)
         fp16 = chosen == "cuda"
+
+        prompt = (initial_prompt or "").strip()
+        lang = (language or "").strip().lower() or None
+
         return model.transcribe(
             str(audio_path),
             fp16=fp16,
+            task="transcribe",
+            language=lang,
+            initial_prompt=(prompt if prompt else None),
             temperature=float(temperature),
             beam_size=max(1, int(beam_size)),
             best_of=max(1, int(best_of)),
@@ -84,6 +95,8 @@ def transcribe_audio(
         else:
             raise
 
+    detected_language = result.get("language")
+
     segments: list[TranscriptSegment] = []
     for seg in result.get("segments", []):
         text = (seg.get("text") or "").strip()
@@ -97,12 +110,22 @@ def transcribe_audio(
             )
         )
 
-    logger.info("transcribe.done", segment_count=len(segments), device=chosen_device)
+    logger.info(
+        "transcribe.done",
+        segment_count=len(segments),
+        device=chosen_device,
+        detected_language=detected_language,
+    )
     return segments
 
 
-def write_transcript_json(*, segments: list[TranscriptSegment], output_path: Path) -> None:
-    payload = {
+def write_transcript_json(
+    *,
+    segments: list[TranscriptSegment],
+    output_path: Path,
+    meta: dict[str, Any] | None = None,
+) -> None:
+    payload: dict[str, Any] = {
         "segments": [
             {
                 "start": s.start_seconds,
@@ -112,4 +135,8 @@ def write_transcript_json(*, segments: list[TranscriptSegment], output_path: Pat
             for s in segments
         ]
     }
+
+    if meta:
+        payload["meta"] = meta
+
     atomic_write_text(output_path, json.dumps(payload, ensure_ascii=False, indent=2))

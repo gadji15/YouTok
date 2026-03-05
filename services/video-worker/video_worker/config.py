@@ -68,6 +68,11 @@ class Settings(BaseSettings):
         description="Whisper best_of (used when temperature>0)",
     )
 
+    whisper_initial_prompt: str = Field(
+        "",
+        description="Optional Whisper initial prompt to bias transcription (e.g. names, domain vocabulary)",
+    )
+
     max_clips: int = Field(5, ge=1, le=50)
     clip_min_seconds: float = Field(60.0, ge=1)
     clip_max_seconds: float = Field(180.0, ge=1)

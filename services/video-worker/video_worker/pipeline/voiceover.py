@@ -177,6 +177,7 @@ def build_voiceover_overrides(
     whisper_temperature: float,
     whisper_beam_size: int,
     whisper_best_of: int,
+    whisper_initial_prompt: str | None,
     clips_dir: Path,
     logger: structlog.BoundLogger,
 ) -> tuple[list[TranscriptSegment], dict[str, list[WordTiming]], dict[str, Path]]:
@@ -219,6 +220,8 @@ def build_voiceover_overrides(
             audio_path=wav_path,
             model_name=whisper_model,
             logger=logger.bind(clip_id=clip.clip_id),
+            language=language,
+            initial_prompt=whisper_initial_prompt,
             device=whisper_device,
             temperature=whisper_temperature,
             beam_size=whisper_beam_size,
