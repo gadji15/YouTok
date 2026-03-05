@@ -22,6 +22,10 @@ Top-level fields:
   - `transcript_json_path` (string|null)
   - `subtitles_srt_path` (string|null)
   - `clips_json_path` (string|null)
+  - `words_json_path` (string|null)
+  - `segments_json_path` (string|null)
+  - `source_metadata_json_path` (string|null)
+  - `source_thumbnail_path` (string|null)
   - `clips` (array)
     - `clip_id` (string)
     - `start_seconds` (number)
@@ -101,6 +105,10 @@ class VideoWorkerCallbackController extends Controller
             'artifacts.transcript_json_path' => ['nullable', 'string'],
             'artifacts.subtitles_srt_path' => ['nullable', 'string'],
             'artifacts.clips_json_path' => ['nullable', 'string'],
+            'artifacts.words_json_path' => ['nullable', 'string'],
+            'artifacts.segments_json_path' => ['nullable', 'string'],
+            'artifacts.source_metadata_json_path' => ['nullable', 'string'],
+            'artifacts.source_thumbnail_path' => ['nullable', 'string'],
             'artifacts.clips' => ['nullable', 'array'],
             'artifacts.clips.*.clip_id' => ['required_with:artifacts.clips', 'string'],
             'artifacts.clips.*.start_seconds' => ['required_with:artifacts.clips', 'numeric'],
@@ -129,6 +137,10 @@ class VideoWorkerCallbackController extends Controller
                 $project->transcript_json_path = $artifacts['transcript_json_path'] ?? null;
                 $project->subtitles_srt_path = $artifacts['subtitles_srt_path'] ?? null;
                 $project->clips_json_path = $artifacts['clips_json_path'] ?? null;
+                $project->words_json_path = $artifacts['words_json_path'] ?? null;
+                $project->segments_json_path = $artifacts['segments_json_path'] ?? null;
+                $project->source_metadata_json_path = $artifacts['source_metadata_json_path'] ?? null;
+                $project->source_thumbnail_path = $artifacts['source_thumbnail_path'] ?? null;
             }
 
             $project->save();

@@ -37,6 +37,10 @@ class WorkerCallbackController
             'artifacts.transcript_json_path' => ['sometimes', 'nullable', 'string'],
             'artifacts.subtitles_srt_path' => ['sometimes', 'nullable', 'string'],
             'artifacts.clips_json_path' => ['sometimes', 'nullable', 'string'],
+            'artifacts.words_json_path' => ['sometimes', 'nullable', 'string'],
+            'artifacts.segments_json_path' => ['sometimes', 'nullable', 'string'],
+            'artifacts.source_metadata_json_path' => ['sometimes', 'nullable', 'string'],
+            'artifacts.source_thumbnail_path' => ['sometimes', 'nullable', 'string'],
 
             'artifacts.clips' => ['sometimes', 'array'],
             'artifacts.clips.*.clip_id' => ['required_with:artifacts.clips', 'string'],
@@ -134,12 +138,19 @@ class WorkerCallbackController
 
         $updates = [
             'worker_job_id' => $incomingJobId,
-            'source_video_path' => data_get($payload, 'artifacts.source_video_path'),
-            'audio_path' => data_get($payload, 'artifacts.audio_path'),
-            'transcript_json_path' => data_get($payload, 'artifacts.transcript_json_path'),
-            'subtitles_srt_path' => data_get($payload, 'artifacts.subtitles_srt_path'),
-            'clips_json_path' => data_get($payload, 'artifacts.clips_json_path'),
         ];
+
+        if (array_key_exists('artifacts', $payload) && is_array($payload['artifacts'])) {
+            $updates['source_video_path'] = data_get($payload, 'artifacts.source_video_path');
+            $updates['audio_path'] = data_get($payload, 'artifacts.audio_path');
+            $updates['transcript_json_path'] = data_get($payload, 'artifacts.transcript_json_path');
+            $updates['subtitles_srt_path'] = data_get($payload, 'artifacts.subtitles_srt_path');
+            $updates['clips_json_path'] = data_get($payload, 'artifacts.clips_json_path');
+            $updates['words_json_path'] = data_get($payload, 'artifacts.words_json_path');
+            $updates['segments_json_path'] = data_get($payload, 'artifacts.segments_json_path');
+            $updates['source_metadata_json_path'] = data_get($payload, 'artifacts.source_metadata_json_path');
+            $updates['source_thumbnail_path'] = data_get($payload, 'artifacts.source_thumbnail_path');
+        }
 
         if ($allowProgressUpdates && array_key_exists('progress_percent', $payload)) {
             $updates['progress_percent'] = $payload['progress_percent'];

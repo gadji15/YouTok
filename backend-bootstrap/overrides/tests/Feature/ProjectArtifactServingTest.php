@@ -39,6 +39,18 @@ class ProjectArtifactServingTest extends TestCase
         $clipsPath = $root.DIRECTORY_SEPARATOR.'clips.json';
         file_put_contents($clipsPath, json_encode(['clips' => []]));
 
+        $wordsPath = $root.DIRECTORY_SEPARATOR.'words.json';
+        file_put_contents($wordsPath, json_encode(['words' => []]));
+
+        $segmentsPath = $root.DIRECTORY_SEPARATOR.'segments.json';
+        file_put_contents($segmentsPath, json_encode(['segments' => []]));
+
+        $metaPath = $root.DIRECTORY_SEPARATOR.'source_metadata.json';
+        file_put_contents($metaPath, json_encode(['title' => 'Test']));
+
+        $thumbPath = $root.DIRECTORY_SEPARATOR.'thumbnail.jpg';
+        file_put_contents($thumbPath, 'jpg');
+
         $project = Project::query()->create([
             'name' => 'Test',
             'youtube_url' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
@@ -46,6 +58,10 @@ class ProjectArtifactServingTest extends TestCase
             'transcript_json_path' => $path,
             'subtitles_srt_path' => $srtPath,
             'clips_json_path' => $clipsPath,
+            'words_json_path' => $wordsPath,
+            'segments_json_path' => $segmentsPath,
+            'source_metadata_json_path' => $metaPath,
+            'source_thumbnail_path' => $thumbPath,
         ]);
 
         $this->actingAs($user)
@@ -58,6 +74,22 @@ class ProjectArtifactServingTest extends TestCase
 
         $this->actingAs($user)
             ->get('/projects/'.(string) $project->id.'/artifacts/clips.json')
+            ->assertOk();
+
+        $this->actingAs($user)
+            ->get('/projects/'.(string) $project->id.'/artifacts/words.json')
+            ->assertOk();
+
+        $this->actingAs($user)
+            ->get('/projects/'.(string) $project->id.'/artifacts/segments.json')
+            ->assertOk();
+
+        $this->actingAs($user)
+            ->get('/projects/'.(string) $project->id.'/artifacts/source_metadata.json')
+            ->assertOk();
+
+        $this->actingAs($user)
+            ->get('/projects/'.(string) $project->id.'/artifacts/thumbnail.jpg')
             ->assertOk();
     }
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import json
+import shutil
 
 import structlog
 
@@ -19,6 +20,7 @@ from .pipeline.segment import segment_candidates, write_clips_json
 from .pipeline.subtitles import write_srt
 from .pipeline.title_generator import generate_title_candidates_for_clip
 from .pipeline.transcribe import transcribe_audio, write_transcript_json
+from .pipeline.transcript_cleanup import cleanup_transcript_segments
 from .pipeline.transcript_normalize import normalize_transcript_segments
 from .pipeline.word_alignment import (
     align_words_with_whisperx,
@@ -28,6 +30,7 @@ from .pipeline.word_alignment import (
 from .redis_conn import get_redis
 from .utils.errors import format_exception_short
 from .utils.ffprobe import probe_video
+from .utils.files import atomic_write_text
 
 
 class JobCancelledError(RuntimeError):
@@ -91,6 +94,7 @@ def process_job(
     job_id: str,
     project_id: str,
     youtube_url: str,
+    local_video_path: str | None,
     callback_url: str,
     callback_secret: str,
     language: str | None = None,
@@ -123,15 +127,21 @@ def process_job(
     effective_min_seconds = settings.clip_min_seconds if clip_min_seconds is None else float(clip_min_seconds)
     effective_max_seconds = settings.clip_max_seconds if clip_max_seconds is None else float(clip_max_seconds)
 
-    # Product constraint (viral mode): clips must be 1–3 minutes.
+    # Product constraint (viral mode): clips must be 15–60 seconds (TikTok/Reels-ready).
     if effective_segmentation_mode == "viral":
-        effective_min_seconds = max(60.0, effective_min_seconds)
-        effective_max_seconds = max(effective_min_seconds, min(180.0, effective_max_seconds))
+        effective_min_seconds = max(15.0, min(60.0, effective_min_seconds))
+        effective_max_seconds = max(effective_min_seconds, min(60.0, effective_max_seconds))
     else:
-        # Chapter/slice mode still uses clip_max_seconds as the slice size (<= 3 min).
-        effective_max_seconds = max(1.0, min(180.0, effective_max_seconds))
+        # Chapter/slice mode still uses clip_max_seconds as the slice size.
+        effective_min_seconds = max(15.0, min(60.0, effective_min_seconds))
+        effective_max_seconds = max(effective_min_seconds, min(60.0, effective_max_seconds))
 
     effective_max_clips = settings.max_clips if max_clips is None else int(max_clips)
+    if effective_segmentation_mode == "viral":
+        effective_max_clips = max(5, min(12, effective_max_clips))
+    else:
+        effective_max_clips = max(1, min(12, effective_max_clips))
+
     effective_subtitles_enabled = (
         settings.subtitles_enabled if subtitles_enabled is None else bool(subtitles_enabled)
     )
@@ -178,23 +188,63 @@ def process_job(
 
         current_stage = "download"
         current_progress = 10
+
+        if local_video_path:
+            download_message = "Ingesting local source video"
+        else:
+            download_message = "Downloading source video"
+
         _best_effort_progress_callback(
             ctx=ctx,
             stage=current_stage,
             progress_percent=current_progress,
-            message="Downloading source video",
+            message=download_message,
             timeout_seconds=settings.callback_timeout_seconds,
             max_retries=settings.callback_max_retries,
             retry_backoff_seconds=settings.callback_retry_backoff_seconds,
             logger=logger,
         )
-        download_youtube_video(
-            youtube_url=ctx.youtube_url,
-            output_path=ctx.source_video_path,
-            logger=logger,
-            max_retries=settings.download_max_retries,
-            retry_backoff_seconds=settings.download_retry_backoff_seconds,
-        )
+
+        if local_video_path:
+            src = Path(local_video_path)
+            if not src.exists() or not src.is_file():
+                raise RuntimeError(f"local_video_path_not_found: {local_video_path}")
+
+            ctx.source_video_path.parent.mkdir(parents=True, exist_ok=True)
+
+            if not (ctx.source_video_path.exists() and ctx.source_video_path.stat().st_size > 0):
+                shutil.copyfile(src, ctx.source_video_path)
+
+            # Best-effort metadata from ffprobe.
+            if not ctx.source_metadata_json_path.exists():
+                try:
+                    info = probe_video(ctx.source_video_path)
+                    atomic_write_text(
+                        ctx.source_metadata_json_path,
+                        json.dumps(
+                            {
+                                "source": "local_file",
+                                "local_video_path": str(src),
+                                "duration": float(info.duration_seconds),
+                                "width": int(info.width),
+                                "height": int(info.height),
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                        ),
+                    )
+                except Exception:
+                    logger.exception("source_metadata.write_failed")
+        else:
+            download_youtube_video(
+                youtube_url=ctx.youtube_url,
+                output_path=ctx.source_video_path,
+                logger=logger,
+                max_retries=settings.download_max_retries,
+                retry_backoff_seconds=settings.download_retry_backoff_seconds,
+                metadata_json_path=ctx.source_metadata_json_path,
+                thumbnail_path=ctx.source_thumbnail_path,
+            )
 
         raise_if_cancelled()
 
@@ -214,6 +264,9 @@ def process_job(
             input_video=ctx.source_video_path,
             output_wav=ctx.audio_path,
             logger=logger,
+            normalize=settings.audio_extract_normalize_enabled,
+            denoise=settings.audio_extract_denoise_enabled,
+            max_retries=settings.audio_extract_max_retries,
         )
 
         raise_if_cancelled()
@@ -254,6 +307,16 @@ def process_job(
 
         segments = normalize_transcript_segments(segments=segments)
 
+        segments = cleanup_transcript_segments(
+            segments=segments,
+            language=language,
+            provider=settings.transcript_cleanup_provider,
+            openai_api_key=settings.openai_api_key,
+            openai_model=settings.openai_model,
+            openai_base_url=settings.openai_base_url,
+            logger=logger,
+        )
+
         write_transcript_json(
             segments=segments,
             output_path=ctx.transcript_json_path,
@@ -261,6 +324,7 @@ def process_job(
                 "model": settings.whisper_model,
                 "requested_language": language,
                 "initial_prompt": initial_prompt,
+                "cleanup_provider": settings.transcript_cleanup_provider,
             },
         )
         write_srt(segments=segments, output_path=ctx.subtitles_srt_path)
@@ -318,19 +382,27 @@ def process_job(
         if effective_segmentation_mode == "chapters":
             duration_seconds = float(probe_video(ctx.source_video_path).duration_seconds)
 
-            chapters = get_youtube_chapters(
-                youtube_url=ctx.youtube_url,
-                logger=logger,
-                video_path=ctx.source_video_path,
-            )
+            chapters = []
+            if ctx.youtube_url:
+                chapters = get_youtube_chapters(
+                    youtube_url=ctx.youtube_url,
+                    logger=logger,
+                    video_path=ctx.source_video_path,
+                )
 
             if chapters:
                 used_chapters = True
-                clips = build_chapter_clips(chapters=chapters, segments=segments)
+                clips = build_chapter_clips(
+                    chapters=chapters,
+                    segments=segments,
+                    max_seconds=effective_max_seconds,
+                    min_seconds=effective_min_seconds,
+                )
             else:
                 clips = build_sequential_clips(
                     duration_seconds=duration_seconds,
                     max_seconds=effective_max_seconds,
+                    min_seconds=effective_min_seconds,
                 )
         else:
             clips = segment_candidates(
@@ -397,11 +469,55 @@ def process_job(
                     score=c.score,
                     reason=c.reason,
                     title=best_title,
+                    features=getattr(c, "features", None),
                 )
             )
 
         clips = updated_clips
         write_clips_json(clips=clips, output_path=ctx.clips_json_path)
+
+        # Analysis output: segments with text + word timestamps (used downstream for subtitles/UI).
+        def _collect_text_window(start: float, end: float) -> str:
+            parts: list[str] = []
+            for s in segments:
+                if s.end_seconds <= start:
+                    continue
+                if s.start_seconds >= end:
+                    break
+                txt = s.text.strip()
+                if txt:
+                    parts.append(txt)
+            return " ".join(parts).strip()
+
+        segments_payload = {
+            "segments": [
+                {
+                    "segment_id": c.clip_id,
+                    "start_time": c.start_seconds,
+                    "end_time": c.end_seconds,
+                    "viral_score": c.score,
+                    "text": _collect_text_window(c.start_seconds, c.end_seconds),
+                    "word_timestamps": [
+                        {
+                            "word": w.word,
+                            "start": w.start_seconds,
+                            "end": w.end_seconds,
+                            "confidence": w.confidence,
+                        }
+                        for w in words
+                        if (w.end_seconds > c.start_seconds and w.start_seconds < c.end_seconds)
+                    ],
+                    "features": c.features,
+                    "title": c.title,
+                }
+                for c in clips
+            ]
+        }
+
+        atomic_write_text(
+            ctx.segments_json_path,
+            json.dumps(segments_payload, ensure_ascii=False, indent=2),
+        )
 
         raise_if_cancelled()
 
@@ -523,6 +639,14 @@ def process_job(
             transcript_json_path=str(ctx.transcript_json_path),
             subtitles_srt_path=str(ctx.subtitles_srt_path),
             clips_json_path=str(ctx.clips_json_path),
+            words_json_path=str(ctx.words_json_path),
+            segments_json_path=str(ctx.segments_json_path),
+            source_metadata_json_path=(
+                str(ctx.source_metadata_json_path) if ctx.source_metadata_json_path.exists() else None
+            ),
+            source_thumbnail_path=(
+                str(ctx.source_thumbnail_path) if ctx.source_thumbnail_path.exists() else None
+            ),
             clips=clip_artifacts,
         )
 
@@ -580,11 +704,19 @@ def process_job(
             message=f"Failed during stage: {current_stage}",
             error=format_exception_short(e),
             artifacts=JobArtifacts(
-                source_video_path=str(ctx.source_video_path),
-                audio_path=str(ctx.audio_path),
-                transcript_json_path=str(ctx.transcript_json_path),
-                subtitles_srt_path=str(ctx.subtitles_srt_path),
-                clips_json_path=str(ctx.clips_json_path),
+                source_video_path=str(ctx.source_video_path) if ctx.source_video_path.exists() else None,
+                audio_path=str(ctx.audio_path) if ctx.audio_path.exists() else None,
+                transcript_json_path=str(ctx.transcript_json_path) if ctx.transcript_json_path.exists() else None,
+                subtitles_srt_path=str(ctx.subtitles_srt_path) if ctx.subtitles_srt_path.exists() else None,
+                clips_json_path=str(ctx.clips_json_path) if ctx.clips_json_path.exists() else None,
+                words_json_path=str(ctx.words_json_path) if ctx.words_json_path.exists() else None,
+                segments_json_path=str(ctx.segments_json_path) if ctx.segments_json_path.exists() else None,
+                source_metadata_json_path=(
+                    str(ctx.source_metadata_json_path) if ctx.source_metadata_json_path.exists() else None
+                ),
+                source_thumbnail_path=(
+                    str(ctx.source_thumbnail_path) if ctx.source_thumbnail_path.exists() else None
+                ),
             ),
         )
 

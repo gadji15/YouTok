@@ -170,6 +170,7 @@ def normalize_transcript_segments(
                 start_seconds=s.start_seconds,
                 end_seconds=s.end_seconds,
                 text=normalize_transcript_text(s.text),
+                confidence=s.confidence,
             )
         )
 

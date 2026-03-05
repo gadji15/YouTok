@@ -19,6 +19,10 @@ Route::middleware('internal.secret')->delete('/projects/{project}', [ProjectCont
 Route::middleware('internal.secret')->get('/projects/{project}/artifacts/transcript', [\App\Http\Controllers\Api\ProjectAssetController::class, 'transcriptJson']);
 Route::middleware('internal.secret')->get('/projects/{project}/artifacts/subtitles', [\App\Http\Controllers\Api\ProjectAssetController::class, 'subtitlesSrt']);
 Route::middleware('internal.secret')->get('/projects/{project}/artifacts/clips', [\App\Http\Controllers\Api\ProjectAssetController::class, 'clipsJson']);
+Route::middleware('internal.secret')->get('/projects/{project}/artifacts/words', [\App\Http\Controllers\Api\ProjectAssetController::class, 'wordsJson']);
+Route::middleware('internal.secret')->get('/projects/{project}/artifacts/segments', [\App\Http\Controllers\Api\ProjectAssetController::class, 'segmentsJson']);
+Route::middleware('internal.secret')->get('/projects/{project}/artifacts/source-metadata', [\App\Http\Controllers\Api\ProjectAssetController::class, 'sourceMetadataJson']);
+Route::middleware('internal.secret')->get('/projects/{project}/artifacts/thumbnail', [\App\Http\Controllers\Api\ProjectAssetController::class, 'sourceThumbnail']);
 
 Route::middleware('internal.secret')->get('/tiktok-accounts', [\App\Http\Controllers\Api\TikTokAccountController::class, 'index']);
 

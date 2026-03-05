@@ -56,16 +56,16 @@ class ProjectController
             // Rendering options
             'language' => ['sometimes', 'nullable', 'in:fr,en'],
             'subtitles_enabled' => ['sometimes', 'boolean'],
-            'clip_min_seconds' => ['sometimes', 'integer', 'min:60', 'max:180'],
-            'clip_max_seconds' => ['sometimes', 'integer', 'min:60', 'max:180', 'gte:clip_min_seconds'],
+            'clip_min_seconds' => ['sometimes', 'integer', 'min:15', 'max:60'],
+            'clip_max_seconds' => ['sometimes', 'integer', 'min:15', 'max:60', 'gte:clip_min_seconds'],
             'subtitle_template' => ['sometimes', 'nullable', 'string', 'max:32'],
             'segmentation_mode' => ['sometimes', 'nullable', 'in:viral,chapters'],
             'originality_mode' => ['sometimes', 'nullable', 'in:none,voiceover'],
             'output_aspect' => ['sometimes', 'nullable', 'in:vertical,source'],
         ]);
 
-        $clipMin = (int) ($request->input('clip_min_seconds', 60));
-        $clipMax = (int) ($request->input('clip_max_seconds', 180));
+        $clipMin = (int) ($request->input('clip_min_seconds', 15));
+        $clipMax = (int) ($request->input('clip_max_seconds', 60));
 
         // Use request accessors for optional fields to avoid edge cases where
         // validated payload may omit optional keys (e.g. false boolean values).
@@ -130,6 +130,10 @@ class ProjectController
                 'transcript_json_path' => $project->transcript_json_path,
                 'subtitles_srt_path' => $project->subtitles_srt_path,
                 'clips_json_path' => $project->clips_json_path,
+                'words_json_path' => $project->words_json_path,
+                'segments_json_path' => $project->segments_json_path,
+                'source_metadata_json_path' => $project->source_metadata_json_path,
+                'source_thumbnail_path' => $project->source_thumbnail_path,
             ],
 
             'clips' => $project->clips->map(static function (\App\Models\Clip $clip): array {
@@ -187,6 +191,10 @@ class ProjectController
         SharedStorage::deleteFile($project->transcript_json_path);
         SharedStorage::deleteFile($project->subtitles_srt_path);
         SharedStorage::deleteFile($project->clips_json_path);
+        SharedStorage::deleteFile($project->words_json_path);
+        SharedStorage::deleteFile($project->segments_json_path);
+        SharedStorage::deleteFile($project->source_metadata_json_path);
+        SharedStorage::deleteFile($project->source_thumbnail_path);
 
         foreach ($project->clips as $clip) {
             SharedStorage::deleteFile($clip->video_path);

@@ -58,6 +58,70 @@ class ProjectAssetController extends Controller
         );
     }
 
+    public function wordsJson(Request $request, Project $project): BinaryFileResponse
+    {
+        $this->authorize('view', $project);
+
+        $path = (string) ($project->words_json_path ?? '');
+        if ($path === '') {
+            abort(404);
+        }
+
+        return $this->serveLocalFile(
+            absolutePath: $path,
+            contentType: 'application/json; charset=utf-8',
+            downloadName: 'words.json',
+        );
+    }
+
+    public function segmentsJson(Request $request, Project $project): BinaryFileResponse
+    {
+        $this->authorize('view', $project);
+
+        $path = (string) ($project->segments_json_path ?? '');
+        if ($path === '') {
+            abort(404);
+        }
+
+        return $this->serveLocalFile(
+            absolutePath: $path,
+            contentType: 'application/json; charset=utf-8',
+            downloadName: 'segments.json',
+        );
+    }
+
+    public function sourceMetadataJson(Request $request, Project $project): BinaryFileResponse
+    {
+        $this->authorize('view', $project);
+
+        $path = (string) ($project->source_metadata_json_path ?? '');
+        if ($path === '') {
+            abort(404);
+        }
+
+        return $this->serveLocalFile(
+            absolutePath: $path,
+            contentType: 'application/json; charset=utf-8',
+            downloadName: 'source_metadata.json',
+        );
+    }
+
+    public function sourceThumbnail(Request $request, Project $project): BinaryFileResponse
+    {
+        $this->authorize('view', $project);
+
+        $path = (string) ($project->source_thumbnail_path ?? '');
+        if ($path === '') {
+            abort(404);
+        }
+
+        return $this->serveLocalFile(
+            absolutePath: $path,
+            contentType: 'image/jpeg',
+            downloadName: 'thumbnail.jpg',
+        );
+    }
+
     private function serveLocalFile(
         string $absolutePath,
         string $contentType,

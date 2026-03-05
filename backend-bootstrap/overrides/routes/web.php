@@ -36,6 +36,10 @@ Route::middleware(['auth', 'verified', 'admin'])->group(function () {
     Route::get('/projects/{project}/artifacts/transcript.json', [ProjectAssetController::class, 'transcriptJson'])->name('projects.artifacts.transcript');
     Route::get('/projects/{project}/artifacts/subtitles.srt', [ProjectAssetController::class, 'subtitlesSrt'])->name('projects.artifacts.subtitles');
     Route::get('/projects/{project}/artifacts/clips.json', [ProjectAssetController::class, 'clipsJson'])->name('projects.artifacts.clips');
+    Route::get('/projects/{project}/artifacts/words.json', [ProjectAssetController::class, 'wordsJson'])->name('projects.artifacts.words');
+    Route::get('/projects/{project}/artifacts/segments.json', [ProjectAssetController::class, 'segmentsJson'])->name('projects.artifacts.segments');
+    Route::get('/projects/{project}/artifacts/source_metadata.json', [ProjectAssetController::class, 'sourceMetadataJson'])->name('projects.artifacts.source_metadata');
+    Route::get('/projects/{project}/artifacts/thumbnail.jpg', [ProjectAssetController::class, 'sourceThumbnail'])->name('projects.artifacts.thumbnail');
 
     Route::get('/clips/{clip}', [ClipController::class, 'show'])->name('clips.show');
 

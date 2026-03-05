@@ -36,6 +36,10 @@ class Project extends Model
         'transcript_json_path',
         'subtitles_srt_path',
         'clips_json_path',
+        'words_json_path',
+        'segments_json_path',
+        'source_metadata_json_path',
+        'source_thumbnail_path',
         'error',
     ];
 

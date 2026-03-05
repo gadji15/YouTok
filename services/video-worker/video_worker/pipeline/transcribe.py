@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -102,11 +103,23 @@ def transcribe_audio(
         text = (seg.get("text") or "").strip()
         if not text:
             continue
+
+        # Whisper provides avg_logprob (log probability per token). Convert to a
+        # rough 0..1 confidence signal.
+        avg_logprob = seg.get("avg_logprob")
+        confidence = None
+        if isinstance(avg_logprob, (int, float)):
+            try:
+                confidence = float(max(0.0, min(1.0, math.exp(float(avg_logprob)))))
+            except (OverflowError, ValueError, TypeError):
+                confidence = None
+
         segments.append(
             TranscriptSegment(
                 start_seconds=float(seg["start"]),
                 end_seconds=float(seg["end"]),
                 text=text,
+                confidence=confidence,
             )
         )
 
@@ -131,6 +144,7 @@ def write_transcript_json(
                 "start": s.start_seconds,
                 "end": s.end_seconds,
                 "text": s.text,
+                "confidence": s.confidence,
             }
             for s in segments
         ]

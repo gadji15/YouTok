@@ -7,7 +7,11 @@ from pydantic import BaseModel, HttpUrl
 
 class JobCreateRequest(BaseModel):
     project_id: str
-    youtube_url: HttpUrl
+
+    # One of: youtube_url or local_video_path
+    youtube_url: HttpUrl | None = None
+    local_video_path: str | None = None
+
     callback_url: HttpUrl
     callback_secret: str
 

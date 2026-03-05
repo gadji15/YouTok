@@ -136,6 +136,10 @@ class ProjectController extends Controller
         SharedStorage::deleteFile($project->transcript_json_path);
         SharedStorage::deleteFile($project->subtitles_srt_path);
         SharedStorage::deleteFile($project->clips_json_path);
+        SharedStorage::deleteFile($project->words_json_path);
+        SharedStorage::deleteFile($project->segments_json_path);
+        SharedStorage::deleteFile($project->source_metadata_json_path);
+        SharedStorage::deleteFile($project->source_thumbnail_path);
 
         foreach ($project->clips as $clip) {
             SharedStorage::deleteFile($clip->video_path);

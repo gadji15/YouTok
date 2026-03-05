@@ -16,7 +16,7 @@ from .titles import generate_clip_title
 from .types import ClipCandidate, TranscriptSegment, WordTiming
 
 
-_HOOK_PATTERNS: list[tuple[re.Pattern[str], float, str]] = [
+_HOOK_PATTERNS_EN: list[tuple[re.Pattern[str], float, str]] = [
     (re.compile(r"\b(you|your)\b", re.I), 0.10, "direct_address"),
     (re.compile(r"\b(how to|how do|why|what if|wait|watch)\b", re.I), 0.25, "question_hook"),
     (re.compile(r"\b(secret|mistake|never|stop|nobody|everyone)\b", re.I), 0.25, "pattern_interrupt"),
@@ -24,6 +24,42 @@ _HOOK_PATTERNS: list[tuple[re.Pattern[str], float, str]] = [
     (re.compile(r"\b(quick|simple|easy)\b", re.I), 0.10, "simplicity"),
     (re.compile(r"\b(top \d+|\d+ (tips|ways|steps))\b", re.I), 0.10, "listicle"),
 ]
+
+_HOOK_PATTERNS_FR: list[tuple[re.Pattern[str], float, str]] = [
+    (re.compile(r"\b(tu|toi|ton|ta|tes|vous|votre|vos)\b", re.I), 0.10, "direct_address"),
+    (re.compile(r"\b(comment|pourquoi|et si|attends|regarde)\b", re.I), 0.25, "question_hook"),
+    (re.compile(r"\b(secret|erreur|jamais|arrete|arrête|stop|personne|tout le monde)\b", re.I), 0.25, "pattern_interrupt"),
+    (re.compile(r"\b(incroyable|choquant|dingue|fou|impossible)\b", re.I), 0.20, "strong_adjective"),
+    (re.compile(r"\b(rapide|simple|facile)\b", re.I), 0.10, "simplicity"),
+    (re.compile(r"\b(top \d+|\d+ (conseils|astuces|etapes|étapes))\b", re.I), 0.10, "listicle"),
+]
+
+_EMOTION_WORDS_EN = {
+    "amazing",
+    "insane",
+    "shocking",
+    "crazy",
+    "unbelievable",
+    "truth",
+    "mistake",
+    "warning",
+    "secret",
+    "story",
+    "error",
+}
+
+_EMOTION_WORDS_FR = {
+    "incroyable",
+    "choquant",
+    "dingue",
+    "fou",
+    "vérité",
+    "verite",
+    "erreur",
+    "histoire",
+    "secret",
+    "attention",
+}
 
 
 def _clamp01(x: float) -> float:
@@ -42,10 +78,16 @@ def _collect_text(*, segments: list[TranscriptSegment], start: float, end: float
     return " ".join(parts).strip()
 
 
-def score_text(text: str) -> tuple[float, list[str]]:
+_WORD_TOKEN_RE = re.compile(r"\b[\w']+\b", re.UNICODE)
+
+
+def score_text(text: str, *, language: str | None = None) -> tuple[float, list[str]]:
     t = text.strip()
     if not t:
         return 0.0, []
+
+    lang = (language or "en").lower().strip()
+    patterns = _HOOK_PATTERNS_FR if lang == "fr" else _HOOK_PATTERNS_EN
 
     score = 0.0
     reasons: list[str] = []
@@ -59,15 +101,43 @@ def score_text(text: str) -> tuple[float, list[str]]:
         score += 0.08 * min(question, 3)
         reasons.append("question")
 
-    word_count = len(t.split())
-    score += min(word_count / 40.0, 0.25)
+    word_count = len(_WORD_TOKEN_RE.findall(t))
+    # Light information-density prior.
+    score += min(word_count / 32.0, 0.25)
 
-    for pattern, weight, reason in _HOOK_PATTERNS:
+    for pattern, weight, reason in patterns:
         if pattern.search(t):
             score += weight
             reasons.append(reason)
 
-    return score, reasons
+    return _clamp01(score), reasons
+
+
+def emotion_word_score(text: str, *, language: str | None = None) -> tuple[float, list[str]]:
+    t = text.strip()
+    if not t:
+        return 0.0, []
+
+    lang = (language or "en").lower().strip()
+    emo = _EMOTION_WORDS_FR if lang == "fr" else _EMOTION_WORDS_EN
+
+    tokens = [w.lower() for w in _WORD_TOKEN_RE.findall(t)]
+    if not tokens:
+        return 0.0, []
+
+    hits = 0
+    for w in tokens:
+        if w in emo:
+            hits += 1
+
+    # Normalize: 0 hits => 0.0, 1 hit => 0.5, 2+ => 1.0
+    score = min(1.0, hits / 2.0)
+
+    reasons: list[str] = []
+    if hits:
+        reasons.append("emotion_words")
+
+    return float(score), reasons
 
 
 def _speech_rate_score(*, words: list[WordTiming], start: float, end: float) -> tuple[float, float]:
@@ -170,7 +240,7 @@ def segment_candidates(
     per_seg_score: list[float] = []
     per_seg_reasons: list[list[str]] = []
     for s in segments:
-        score, rs = score_text(s.text)
+        score, rs = score_text(s.text, language=language)
         per_seg_score.append(score)
         per_seg_reasons.append(rs)
 
@@ -244,23 +314,22 @@ def segment_candidates(
 
         duration = max(0.01, end - start)
 
-        score = float(c.score)
-        reasons = [r for r in (c.reason or "").split(",") if r]
-
-        # Fresh text score over the exact window.
+        # Compute per-criterion viral components (0..1) and combine.
         window_text = _collect_text(segments=segments, start=start, end=end)
-        text_score, text_reasons = score_text(window_text)
-        score = 0.70 * score + 0.30 * _clamp01(text_score)
-        reasons.extend(text_reasons)
+        open_text = _collect_text(segments=segments, start=start, end=min(end, start + 6.0))
 
-        # Strong hook in the opening is worth more.
-        open_text = _collect_text(segments=segments, start=start, end=min(end, start + 8.0))
-        open_score, _ = score_text(open_text)
-        if open_score >= 0.35:
-            score = _clamp01(score + 0.06)
-            reasons.append("hook_open")
+        base_hook_score, base_hook_reasons = score_text(open_text, language=language)
+        emo_score, emo_reasons = emotion_word_score(window_text, language=language)
 
+        token_count = len(_WORD_TOKEN_RE.findall(window_text))
+        wps_text = token_count / duration
+        # Normalize around typical speech: ~2–4 wps.
+        info_density_score = _clamp01((wps_text - 1.6) / 2.4)
+
+        energy_score = 0.0
         silence_ratio = None
+        silence_score = 0.0
+
         if audio_path is not None and audio_path.exists():
             a = compute_audio_window_features(
                 wav_path=audio_path,
@@ -268,26 +337,36 @@ def segment_candidates(
                 end_seconds=end,
             )
             if a is not None:
-                energy = _clamp01(a.rms * 4.0)
+                energy_score = _clamp01(a.rms * 4.0)
                 silence_ratio = float(a.silence_ratio)
+                silence_score = _clamp01(1.0 - silence_ratio)
 
-                score = 0.80 * score + 0.20 * energy
-
-                if energy > 0.30:
-                    reasons.append("high_energy")
-                if a.silence_ratio < 0.25:
-                    reasons.append("low_silence")
-
+        # Optional: compute speed from word timings if we have them.
+        wps = wps_text
         if words:
-            sr_score, wps = _speech_rate_score(words=words, start=start, end=end)
-            score = 0.90 * score + 0.10 * sr_score
+            _, wps = _speech_rate_score(words=words, start=start, end=end)
 
-            if wps >= 3.2:
-                reasons.append("fast_speech")
+        # Cahier des charges formula:
+        # viral = energy*0.25 + emotion*0.25 + info_density*0.20 + hook*0.20 + absence_silence*0.10
+        score = (
+            0.25 * energy_score
+            + 0.25 * emo_score
+            + 0.20 * info_density_score
+            + 0.20 * base_hook_score
+            + 0.10 * silence_score
+        )
+        score = _clamp01(score)
 
-        if silence_ratio is not None:
-            # Penalize dead air.
-            score = _clamp01(score * (1.0 - 0.35 * _clamp01(silence_ratio)))
+        reasons = [r for r in (c.reason or "").split(",") if r]
+        reasons.extend(base_hook_reasons)
+        reasons.extend(emo_reasons)
+
+        if energy_score > 0.30:
+            reasons.append("high_energy")
+        if silence_ratio is not None and silence_ratio < 0.25:
+            reasons.append("low_silence")
+        if wps >= 3.2:
+            reasons.append("fast_speech")
 
         reason_str = ",".join(list(dict.fromkeys([r for r in reasons if r]))[:6]) or "baseline"
 
@@ -298,6 +377,14 @@ def segment_candidates(
                 end_seconds=float(end),
                 score=_clamp01(score),
                 reason=reason_str,
+                features={
+                    "energy_voix": float(energy_score),
+                    "emotion_mots": float(emo_score),
+                    "densite_information": float(info_density_score),
+                    "structure_hook": float(base_hook_score),
+                    "absence_silence": float(silence_score),
+                    "wps": float(wps),
+                },
             )
         )
 
@@ -311,6 +398,7 @@ def segment_candidates(
         for c in enriched[:vision_keep]:
             score = float(c.score)
             reasons = [r for r in (c.reason or "").split(",") if r]
+            features = dict(c.features or {})
 
             m = compute_motion_score(
                 video_path=video_path,
@@ -318,6 +406,7 @@ def segment_candidates(
                 end_seconds=c.end_seconds,
             )
             if m is not None:
+                features["motion"] = float(m)
                 score = 0.88 * score + 0.12 * float(m)
                 if m > 0.25:
                     reasons.append("high_motion")
@@ -328,6 +417,7 @@ def segment_candidates(
                 end_seconds=c.end_seconds,
             )
             if f is not None:
+                features["face_presence"] = float(f)
                 score = 0.92 * score + 0.08 * float(f)
                 if f > 0.20:
                     reasons.append("face")
@@ -341,6 +431,7 @@ def segment_candidates(
                     end_seconds=c.end_seconds,
                     score=_clamp01(score),
                     reason=reason_str,
+                    features=features or None,
                 )
             )
 
@@ -361,6 +452,7 @@ def segment_candidates(
             end_seconds=round(c.end_seconds, 2),
             score=round(c.score, 4),
             reason=c.reason,
+            features=c.features,
         )
 
         title = generate_clip_title(clip=base, segments=segments, language=language)
@@ -373,6 +465,7 @@ def segment_candidates(
                 score=base.score,
                 reason=base.reason,
                 title=title,
+                features=base.features,
             )
         )
 

@@ -119,30 +119,82 @@ def _collect_text(*, segments: list[TranscriptSegment], start: float, end: float
     return " ".join(parts).strip()
 
 
-def build_chapter_clips(*, chapters: list[YoutubeChapter], segments: list[TranscriptSegment]) -> list[ClipCandidate]:
+def build_chapter_clips(
+    *,
+    chapters: list[YoutubeChapter],
+    segments: list[TranscriptSegment],
+    max_seconds: float | None = None,
+    min_seconds: float = 1.0,
+) -> list[ClipCandidate]:
     clips: list[ClipCandidate] = []
 
-    for idx, ch in enumerate(chapters, start=1):
-        text = _collect_text(segments=segments, start=ch.start_seconds, end=ch.end_seconds)
-        s, _ = score_text(text)
+    max_s = float(max_seconds) if max_seconds is not None else None
+    if max_s is not None:
+        max_s = max(1.0, max_s)
 
-        clips.append(
-            ClipCandidate(
-                clip_id=f"clip_{idx:03d}",
-                start_seconds=round(float(ch.start_seconds), 2),
-                end_seconds=round(float(ch.end_seconds), 2),
-                score=round(float(s), 4),
-                reason="chapter",
-                title=ch.title,
+    min_s = max(1.0, float(min_seconds))
+
+    idx = 1
+    for ch in chapters:
+        start = float(ch.start_seconds)
+        end = float(ch.end_seconds)
+        if end <= start:
+            continue
+
+        if max_s is None or (end - start) <= max_s + 0.01:
+            text = _collect_text(segments=segments, start=start, end=end)
+            s, _ = score_text(text)
+
+            clips.append(
+                ClipCandidate(
+                    clip_id=f"clip_{idx:03d}",
+                    start_seconds=round(float(start), 2),
+                    end_seconds=round(float(end), 2),
+                    score=round(float(s), 4),
+                    reason="chapter",
+                    title=ch.title,
+                )
             )
-        )
+            idx += 1
+            continue
+
+        # Split long chapters into slices.
+        part = 1
+        cur = start
+        while cur < end - 0.01:
+            slice_end = min(end, cur + max_s)
+            if slice_end - cur < min_s:
+                break
+
+            text = _collect_text(segments=segments, start=cur, end=slice_end)
+            s, _ = score_text(text)
+
+            clips.append(
+                ClipCandidate(
+                    clip_id=f"clip_{idx:03d}",
+                    start_seconds=round(float(cur), 2),
+                    end_seconds=round(float(slice_end), 2),
+                    score=round(float(s), 4),
+                    reason="chapter_slice",
+                    title=f"{ch.title} (Part {part})",
+                )
+            )
+            idx += 1
+            part += 1
+            cur = slice_end
 
     return clips
 
 
-def build_sequential_clips(*, duration_seconds: float, max_seconds: float) -> list[ClipCandidate]:
+def build_sequential_clips(
+    *,
+    duration_seconds: float,
+    max_seconds: float,
+    min_seconds: float = 1.0,
+) -> list[ClipCandidate]:
     duration_seconds = max(0.0, float(duration_seconds))
     max_seconds = max(1.0, float(max_seconds))
+    min_seconds = max(1.0, float(min_seconds))
 
     if duration_seconds <= 0.01:
         return []
@@ -153,7 +205,7 @@ def build_sequential_clips(*, duration_seconds: float, max_seconds: float) -> li
     idx = 1
     while start < duration_seconds - 0.01:
         end = min(duration_seconds, start + max_seconds)
-        if end - start >= 1.0:
+        if end - start >= min_seconds:
             clips.append(
                 ClipCandidate(
                     clip_id=f"clip_{idx:03d}",

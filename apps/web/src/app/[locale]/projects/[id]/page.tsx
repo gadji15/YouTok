@@ -203,6 +203,26 @@ export default async function ProjectDetailsPage({
                 label="clips.json"
                 enabled={Boolean(project.artifacts.clips_json_path)}
               />
+              <ArtifactLink
+                href={`/api/projects/${project.id}/artifacts/words`}
+                label="words.json"
+                enabled={Boolean(project.artifacts.words_json_path)}
+              />
+              <ArtifactLink
+                href={`/api/projects/${project.id}/artifacts/segments`}
+                label="segments.json"
+                enabled={Boolean(project.artifacts.segments_json_path)}
+              />
+              <ArtifactLink
+                href={`/api/projects/${project.id}/artifacts/source-metadata`}
+                label="source_metadata.json"
+                enabled={Boolean(project.artifacts.source_metadata_json_path)}
+              />
+              <ArtifactLink
+                href={`/api/projects/${project.id}/artifacts/thumbnail`}
+                label="thumbnail.jpg"
+                enabled={Boolean(project.artifacts.source_thumbnail_path)}
+              />
             </div>
           </CardContent>
         </Card>

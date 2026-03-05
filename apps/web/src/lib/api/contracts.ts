@@ -61,6 +61,10 @@ export type ApiProjectArtifacts = {
   transcript_json_path: string | null;
   subtitles_srt_path: string | null;
   clips_json_path: string | null;
+  words_json_path: string | null;
+  segments_json_path: string | null;
+  source_metadata_json_path: string | null;
+  source_thumbnail_path: string | null;
 };
 
 export type ApiProjectOptions = {

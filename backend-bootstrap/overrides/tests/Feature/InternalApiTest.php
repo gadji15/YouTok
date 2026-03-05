@@ -44,8 +44,8 @@ class InternalApiTest extends TestCase
             'status' => ProjectStatus::queued,
             'language' => 'fr',
             'subtitles_enabled' => false,
-            'clip_min_seconds' => 60,
-            'clip_max_seconds' => 180,
+            'clip_min_seconds' => 15,
+            'clip_max_seconds' => 60,
             'subtitle_template' => 'modern',
         ]);
 
@@ -161,9 +161,18 @@ class InternalApiTest extends TestCase
         $sourceVideoPath = $root.DIRECTORY_SEPARATOR.'source.mp4';
         $audioPath = $root.DIRECTORY_SEPARATOR.'audio.wav';
         $transcriptJsonPath = $root.DIRECTORY_SEPARATOR.'transcript.json';
+        $wordsJsonPath = $root.DIRECTORY_SEPARATOR.'words.json';
+        $segmentsJsonPath = $root.DIRECTORY_SEPARATOR.'segments.json';
+        $metaPath = $root.DIRECTORY_SEPARATOR.'source_metadata.json';
+        $thumbPath = $root.DIRECTORY_SEPARATOR.'thumbnail.jpg';
+
         file_put_contents($sourceVideoPath, 'video');
         file_put_contents($audioPath, 'audio');
         file_put_contents($transcriptJsonPath, '{"ok":true}');
+        file_put_contents($wordsJsonPath, '{"words":[]}');
+        file_put_contents($segmentsJsonPath, '{"segments":[]}');
+        file_put_contents($metaPath, '{"title":"t"}');
+        file_put_contents($thumbPath, 'jpg');
 
         $project = Project::query()->create([
             'name' => 'Test',
@@ -172,6 +181,10 @@ class InternalApiTest extends TestCase
             'source_video_path' => $sourceVideoPath,
             'audio_path' => $audioPath,
             'transcript_json_path' => $transcriptJsonPath,
+            'words_json_path' => $wordsJsonPath,
+            'segments_json_path' => $segmentsJsonPath,
+            'source_metadata_json_path' => $metaPath,
+            'source_thumbnail_path' => $thumbPath,
         ]);
 
         $clipVideoPath = $root.DIRECTORY_SEPARATOR.'clip.mp4';
@@ -195,6 +208,10 @@ class InternalApiTest extends TestCase
         self::assertFileDoesNotExist($sourceVideoPath);
         self::assertFileDoesNotExist($audioPath);
         self::assertFileDoesNotExist($transcriptJsonPath);
+        self::assertFileDoesNotExist($wordsJsonPath);
+        self::assertFileDoesNotExist($segmentsJsonPath);
+        self::assertFileDoesNotExist($metaPath);
+        self::assertFileDoesNotExist($thumbPath);
         self::assertFileDoesNotExist($clipVideoPath);
     }
 

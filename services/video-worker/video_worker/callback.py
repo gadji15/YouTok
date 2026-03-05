@@ -56,6 +56,12 @@ class JobArtifacts(BaseModel):
 
     clips_json_path: str | None = None
 
+    # Additional analysis artifacts (best-effort).
+    words_json_path: str | None = None
+    segments_json_path: str | None = None
+    source_metadata_json_path: str | None = None
+    source_thumbnail_path: str | None = None
+
     clips: list[ClipArtifact] = Field(default_factory=list)
 
 

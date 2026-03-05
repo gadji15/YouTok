@@ -73,9 +73,9 @@ class Settings(BaseSettings):
         description="Optional Whisper initial prompt to bias transcription (e.g. names, domain vocabulary)",
     )
 
-    max_clips: int = Field(5, ge=1, le=50)
-    clip_min_seconds: float = Field(60.0, ge=1)
-    clip_max_seconds: float = Field(180.0, ge=1)
+    max_clips: int = Field(8, ge=1, le=50)
+    clip_min_seconds: float = Field(15.0, ge=1)
+    clip_max_seconds: float = Field(60.0, ge=1)
 
     subtitles_enabled: bool = Field(
         True,
@@ -165,6 +165,23 @@ class Settings(BaseSettings):
 
     download_max_retries: int = Field(2, ge=0, le=10)
     download_retry_backoff_seconds: float = Field(1.0, ge=0)
+
+    audio_extract_normalize_enabled: bool = Field(
+        True,
+        description="If true, apply light normalization during audio extraction (pre-transcription)",
+    )
+
+    audio_extract_denoise_enabled: bool = Field(
+        True,
+        description="If true, apply light denoise/EQ during audio extraction (pre-transcription)",
+    )
+
+    audio_extract_max_retries: int = Field(1, ge=0, le=5)
+
+    transcript_cleanup_provider: str = Field(
+        "heuristic",
+        description="Transcript cleanup provider: none|heuristic|openai",
+    )
 
     rq_job_timeout_seconds: int = Field(60 * 45, ge=60)
     rq_result_ttl_seconds: int = Field(60 * 60, ge=0)

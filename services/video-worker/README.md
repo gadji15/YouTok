@@ -25,8 +25,8 @@ Common:
 - `VIDEO_WORKER_WHISPER_TEMPERATURE` (default: `0.0`)
 - `VIDEO_WORKER_WHISPER_BEAM_SIZE` (default: `1`)
 - `VIDEO_WORKER_WHISPER_BEST_OF` (default: `1`)
-- `VIDEO_WORKER_CLIP_MIN_SECONDS` (default: `60`)
-- `VIDEO_WORKER_CLIP_MAX_SECONDS` (default: `180`)
+- `VIDEO_WORKER_CLIP_MIN_SECONDS` (default: `15`)
+- `VIDEO_WORKER_CLIP_MAX_SECONDS` (default: `60`)
 - `VIDEO_WORKER_SUBTITLES_ENABLED` (default: `true`)
 - `VIDEO_WORKER_SUBTITLE_TEMPLATE` (default: `modern_karaoke`; one of `default`, `modern`, `karaoke`, `modern_karaoke`)
 - `VIDEO_WORKER_TITLE_PROVIDER` (default: `heuristic`; one of `heuristic`, `openai`)
@@ -127,6 +127,10 @@ Payload shape:
     "transcript_json_path": "...",
     "subtitles_srt_path": "...",
     "clips_json_path": "...",
+    "words_json_path": "...",
+    "segments_json_path": "...",
+    "source_metadata_json_path": "...",
+    "source_thumbnail_path": "...",
     "clips": [
       {
         "clip_id": "clip_001",
@@ -145,9 +149,12 @@ Payload shape:
 }
 ```
 
-Additional artifacts written to disk (not currently included in the callback payload):
+Additional artifacts written to disk (and included in the callback payload when available):
 
 - `projects/<project_id>/artifacts/words.json`: word-level timestamps `{word,start,end,confidence}` (WhisperX when available, otherwise heuristic fallback).
+- `projects/<project_id>/artifacts/segments.json`: selected segments with `{segment_id,start_time,end_time,viral_score,text,word_timestamps}`.
+- `projects/<project_id>/artifacts/source_metadata.json`: best-effort yt-dlp metadata (or ffprobe metadata for local file mode).
+- `projects/<project_id>/artifacts/thumbnail.jpg`: best-effort thumbnail (YouTube mode).
 
 ## Integration test plan (curl)
 
@@ -190,6 +197,19 @@ curl -sS -X POST http://localhost:8000/jobs \
   -d '{
     "project_id": "proj_1",
     "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "callback_url": "http://localhost:8080/api/worker/callback",
+    "callback_secret": "supersecret"
+  }'
+```
+
+Local file mode (worker must be able to read the path inside its container):
+
+```bash
+curl -sS -X POST http://localhost:8000/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "project_id": "proj_1",
+    "local_video_path": "/shared/uploads/source.mp4",
     "callback_url": "http://localhost:8080/api/worker/callback",
     "callback_secret": "supersecret"
   }'
