@@ -162,6 +162,55 @@ class Settings(BaseSettings):
 
     target_fps: int = Field(30, ge=1, le=60)
 
+    # Part 8 — viral engine (render-time optimizations)
+    viral_engine_enabled: bool = Field(
+        True,
+        description="If true, apply viral editing optimizations (hook/zoom/text/emojis)",
+    )
+
+    viral_hook_window_seconds: float = Field(
+        3.0,
+        ge=0.5,
+        le=6.0,
+        description="How many seconds at the beginning to scan for a hook",
+    )
+
+    viral_hook_shift_max_seconds: float = Field(
+        2.0,
+        ge=0.0,
+        le=6.0,
+        description="Max seconds we are allowed to shift the clip start forward to land on a hook",
+    )
+
+    viral_hook_text_enabled: bool = Field(
+        True,
+        description="If true, add a short hook text overlay during the first seconds",
+    )
+
+    viral_emojis_enabled: bool = Field(
+        True,
+        description="If true, overlay brief emojis for high-signal keywords",
+    )
+
+    viral_max_emojis: int = Field(
+        6,
+        ge=0,
+        le=20,
+        description="Max number of emoji overlays per clip",
+    )
+
+    viral_zoom_intensity: float = Field(
+        0.06,
+        ge=0.0,
+        le=0.25,
+        description="Zoom intensity for punch/intro zoom (e.g. 0.06 = +6%)",
+    )
+
+    viral_effect_style: str = Field(
+        "subtle",
+        description="Viral effect style preset: subtle|strong",
+    )
+
     enable_loudnorm: bool = Field(
         False,
         description="If true, apply ffmpeg loudnorm to audio during render",

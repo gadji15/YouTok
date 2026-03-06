@@ -29,6 +29,14 @@ class JobCreateRequest(BaseModel):
     subtitles_enabled: bool = True
     subtitle_template: str | None = None
 
+    # Part 8 — viral engine overrides
+    viral_engine_enabled: bool | None = None
+    viral_effect_style: str | None = None
+    viral_zoom_intensity: float | None = None
+    viral_hook_text_enabled: bool | None = None
+    viral_emojis_enabled: bool | None = None
+    viral_max_emojis: int | None = None
+
     clip_min_seconds: float | None = None
     clip_max_seconds: float | None = None
     max_clips: int | None = None

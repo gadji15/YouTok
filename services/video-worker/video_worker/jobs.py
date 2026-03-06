@@ -276,6 +276,12 @@ def process_job(
     max_clips: int | None = None,
     originality_mode: str | None = None,
     output_aspect: str | None = None,
+    viral_engine_enabled: bool | None = None,
+    viral_effect_style: str | None = None,
+    viral_zoom_intensity: float | None = None,
+    viral_hook_text_enabled: bool | None = None,
+    viral_emojis_enabled: bool | None = None,
+    viral_max_emojis: int | None = None,
 ) -> dict:
     settings = get_settings()
     logger = get_logger(service="video-worker", job_id=job_id, project_id=project_id)
@@ -316,6 +322,27 @@ def process_job(
         settings.subtitles_enabled if subtitles_enabled is None else bool(subtitles_enabled)
     )
     effective_subtitle_template = settings.subtitle_template if not subtitle_template else subtitle_template
+
+    effective_viral_engine_enabled = settings.viral_engine_enabled if viral_engine_enabled is None else bool(viral_engine_enabled)
+    effective_viral_effect_style = settings.viral_effect_style if not viral_effect_style else str(viral_effect_style)
+
+    effective_viral_zoom_intensity = (
+        float(settings.viral_zoom_intensity) if viral_zoom_intensity is None else float(viral_zoom_intensity)
+    )
+    effective_viral_zoom_intensity = max(0.0, min(0.25, effective_viral_zoom_intensity))
+
+    effective_viral_hook_text_enabled = (
+        bool(settings.viral_hook_text_enabled)
+        if viral_hook_text_enabled is None
+        else bool(viral_hook_text_enabled)
+    )
+
+    effective_viral_emojis_enabled = (
+        bool(settings.viral_emojis_enabled) if viral_emojis_enabled is None else bool(viral_emojis_enabled)
+    )
+
+    effective_viral_max_emojis = int(settings.viral_max_emojis) if viral_max_emojis is None else int(viral_max_emojis)
+    effective_viral_max_emojis = max(0, min(20, effective_viral_max_emojis))
 
     ctx = JobContext(
         job_id=job_id,
@@ -657,6 +684,8 @@ def process_job(
                     video_path=ctx.source_video_path,
                     words=words,
                     language=language,
+                    hook_window_seconds=settings.viral_hook_window_seconds,
+                    hook_shift_max_seconds=settings.viral_hook_shift_max_seconds,
                 )
 
         # Resume-safe: if we're in chapters mode and clips already carry titles, keep them.
@@ -725,6 +754,7 @@ def process_job(
                     "start_time": c.start_seconds,
                     "end_time": c.end_seconds,
                     "viral_score": c.score,
+                    "viral_score_100": int(round(float(c.score) * 100.0)),
                     "text": _collect_text_window(c.start_seconds, c.end_seconds),
                     "word_timestamps": [
                         {
@@ -813,6 +843,7 @@ def process_job(
                 payload = {
                     "source_video_path": str(ctx.source_video_path),
                     "output_dir": str(ctx.clips_dir),
+                    "language": language,
                     "clips": [
                         {
                             "clip_id": c.clip_id,
@@ -845,7 +876,11 @@ def process_job(
                     "stabilization_enabled": settings.stabilization_enabled,
                     "visual_enhance_enabled": settings.visual_enhance_enabled,
                     "ui_safe_ymin": settings.ui_safe_ymin,
-                    "word_timings": (
+                    "viral_engine_enabled": effective_viral_engine_enabled,
+                    "viral_effect_style": effective_viral_effect_style,
+                    "viral_zoom_intensity": effective_viral_zoom_intensity,
+                    "viral_hook_text_enabled": effective_viral_hook_text_enabled,
+                    "viral_emojis                    "word_timings": (
                         [
                             {
                                 "word": w.word,
@@ -924,6 +959,13 @@ def process_job(
                 quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
                 quality_gate_max_attempts=settings.quality_gate_max_attempts,
                 ui_safe_ymin=settings.ui_safe_ymin,
+                viral_engine_enabled=effective_viral_engine_enabled,
+                viral_effect_style=effective_viral_effect_style,
+                viral_zoom_intensity=effective_viral_zoom_intensity,
+                viral_hook_text_enabled=effective_viral_hook_text_enabled,
+                viral_emojis_enabled=effective_viral_emojis_enabled,
+                viral_max_emojis=effective_viral_max_emojis,
+                language=language,
             )
 
         rendered = run_with_stage_retries("render_clips", _do_render)

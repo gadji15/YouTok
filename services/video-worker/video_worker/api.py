@@ -90,6 +90,12 @@ def create_app() -> FastAPI:
             req.max_clips,
             req.originality_mode,
             req.output_aspect,
+            req.viral_engine_enabled,
+            req.viral_effect_style,
+            req.viral_zoom_intensity,
+            req.viral_hook_text_enabled,
+            req.viral_emojis_enabled,
+            req.viral_max_emojis,
             job_id=job_id,
             result_ttl=settings.rq_result_ttl_seconds,
         )

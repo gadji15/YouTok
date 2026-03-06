@@ -81,6 +81,15 @@ class RenderRequest(BaseModel):
     visual_enhance_enabled: bool = True
     ui_safe_ymin: float = 0.78
 
+    # Part 8 — viral engine
+    language: str | None = None
+    viral_engine_enabled: bool = True
+    viral_effect_style: str = "subtle"
+    viral_zoom_intensity: float = Field(0.06, ge=0.0, le=0.25)
+    viral_hook_text_enabled: bool = True
+    viral_emojis_enabled: bool = True
+    viral_max_emojis: int = Field(6, ge=0, le=20)
+
     word_timings: list[RenderWordTiming] | None = None
 
 
@@ -155,6 +164,13 @@ def render(req: RenderRequest) -> dict[str, Any]:
             quality_gate_enabled=settings.quality_gate_enabled,
             quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
             quality_gate_max_attempts=settings.quality_gate_max_attempts,
+            viral_engine_enabled=bool(req.viral_engine_enabled) and bool(settings.viral_engine_enabled),
+            viral_effect_style=req.viral_effect_style or settings.viral_effect_style,
+            viral_zoom_intensity=float(req.viral_zoom_intensity),
+            viral_hook_text_enabled=bool(req.viral_hook_text_enabled) and bool(settings.viral_hook_text_enabled),
+            viral_emojis_enabled=bool(req.viral_emojis_enabled) and bool(settings.viral_emojis_enabled),
+            viral_max_emojis=int(req.viral_max_emojis),
+            language=req.language,
         )
 
         return {"clips": rendered}

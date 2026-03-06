@@ -42,13 +42,26 @@ def test_render_clips_builds_filters_for_stabilization_and_visual_enhance(monkey
     out = render_clips(
         source_video=tmp_path / "src.mp4",
         transcript_segments=segs,
-        clips=clips,
+        clips=[
+            ClipCandidate(
+                "clip_001",
+                0.0,
+                5.0,
+                0.9,
+                "baseline",
+                features={"hook_score": 0.9},
+            )
+        ],
         output_dir=tmp_path / "out",
         logger=structlog.get_logger(),
         subtitles_enabled=False,
         output_aspect="vertical",
         stabilization_enabled=True,
         visual_enhance_enabled=True,
+        viral_engine_enabled=True,
+        viral_zoom_intensity=0.06,
+        viral_hook_text_enabled=False,
+        viral_emojis_enabled=False,
     )
 
     assert out and out[0]["clip_id"] == "clip_001"
@@ -62,6 +75,7 @@ def test_render_clips_builds_filters_for_stabilization_and_visual_enhance(monkey
     assert ("vidstabtransform=" in vf) or ("deshake=" in vf)
     assert "eq=contrast=" in vf
     assert "unsharp=" in vf
+    assert "crop=w='iw/(if(between(t,0," in vf
 
     assert cmd[cmd.index("-maxrate") + 1] == "10M"
     assert cmd[cmd.index("-bufsize") + 1] == "12M"

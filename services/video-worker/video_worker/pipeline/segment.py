@@ -14,6 +14,7 @@ from .features import (
 from .nms import non_max_suppression
 from .titles import generate_clip_title
 from .types import ClipCandidate, TranscriptSegment, WordTiming
+from .viral_engine import detect_hook_start_seconds
 
 
 _HOOK_PATTERNS_EN: list[tuple[re.Pattern[str], float, str]] = [
@@ -399,6 +400,8 @@ def segment_candidates(
     language: str | None = None,
     candidates_per_start: int = 2,
     nms_iou_threshold: float = 0.35,
+    hook_window_seconds: float = 3.0,
+    hook_shift_max_seconds: float = 2.0,
 ) -> list[ClipCandidate]:
     if not segments:
         return []
@@ -496,6 +499,33 @@ def segment_candidates(
 
         duration = max(0.01, end - start)
 
+        hook_score = 0.0
+        hook_shifted = False
+        hook_shift_seconds = 0.0
+
+        start_before_hook = float(start)
+
+        hook = detect_hook_start_seconds(
+            segments=segments,
+            words=words,
+            audio_path=audio_path,
+            clip_start_seconds=float(start),
+            clip_end_seconds=float(end),
+            language=language,
+            hook_window_seconds=float(hook_window_seconds),
+            shift_max_seconds=float(hook_shift_max_seconds),
+        )
+        if hook is not None:
+            hook_score = float(hook.score)
+            if hook.start_seconds > (start + 0.05):
+                new_start = float(hook.start_seconds)
+                if (end - new_start) >= float(min_seconds):
+                    start = new_start
+                    duration = max(0.01, end - start)
+                    hook_shifted = True
+
+        hook_shift_seconds = float(max(0.0, start - start_before_hook))
+
         # Compute per-criterion viral components (0..1) and combine.
         window_text = _collect_text(segments=segments, start=start, end=end)
         open_text = _collect_text(segments=segments, start=start, end=min(end, start + 6.0))
@@ -567,6 +597,9 @@ def segment_candidates(
         reasons.extend(base_hook_reasons)
         reasons.extend(emo_reasons)
 
+        if hook_shifted:
+            reasons.append("hook_start")
+
         if energy_score > 0.30:
             reasons.append("high_energy")
         if silence_ratio is not None and silence_ratio < 0.25:
@@ -586,6 +619,9 @@ def segment_candidates(
                 score=_clamp01(score),
                 reason=reason_str,
                 features={
+                    "viral_score_100": float(int(round(_clamp01(score) * 100.0))),
+                    "hook_score": float(hook_score),
+                    "hook_shift_seconds": float(hook_shift_seconds),
                     "energy_voix": float(energy_score),
                     "energy_variation": float(energy_variation),
                     "emotion_mots": float(emo_score),
@@ -634,6 +670,12 @@ def segment_candidates(
                     reasons.append("face")
 
             reason_str = ",".join(list(dict.fromkeys([r for r in reasons if r]))[:6]) or "baseline"
+
+            try:
+                if features is not None and isinstance(features, dict):
+                    features["viral_score_100"] = float(int(round(_clamp01(score) * 100.0)))
+            except Exception:
+                pass
 
             updated.append(
                 ClipCandidate(
