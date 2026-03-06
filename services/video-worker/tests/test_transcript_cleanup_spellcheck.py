@@ -36,3 +36,15 @@ def test_spellcheck_cleanup_text_is_conservative_for_capitalized_tokens(monkeypa
     out = spellcheck_cleanup_text("Teh truth", language="en")
     # We only correct fully lowercase tokens.
     assert out == "Teh truth"
+
+
+def test_spellcheck_cleanup_text_skips_arabic(monkeypatch) -> None:
+    class ExplodingSpellChecker:
+        def __init__(self, language: str):
+            raise AssertionError("spellchecker_should_not_be_used_for_arabic")
+
+    monkeypatch.setattr("video_worker.pipeline.transcript_cleanup._SpellChecker", ExplodingSpellChecker)
+
+    text = "قال النبي صلى الله عليه وسلم"
+    out = spellcheck_cleanup_text(text, language="ar")
+    assert out == text

@@ -1,0 +1,10 @@
+services:
+  video-worker-api:
+    environment:
+      VIDEO_WORKER_TEXT_AWARE_CROP_ENABLED: "true"
+  clip-service:
+    environment:
+      VIDEO_WORKER_TEXT_AWARE_CROP_ENABLED: "true"
+  video-worker-worker:
+    environment:
+      VIDEO_WORKER_TEXT_AWARE_CROP_ENABLED: "true"

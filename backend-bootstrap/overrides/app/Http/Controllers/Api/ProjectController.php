@@ -64,10 +64,10 @@ class ProjectController
             'local_video_path' => ['sometimes', 'nullable', 'string', 'max:4096'],
 
             // Rendering options
-            'language' => ['sometimes', 'nullable', 'in:fr,en'],
+            'language' => ['sometimes', 'nullable', 'in:fr,en,ar'],
             'subtitles_enabled' => ['sometimes', 'boolean'],
-            'clip_min_seconds' => ['sometimes', 'integer', 'min:15', 'max:60'],
-            'clip_max_seconds' => ['sometimes', 'integer', 'min:15', 'max:60', 'gte:clip_min_seconds'],
+            'clip_min_seconds' => ['sometimes', 'integer', 'min:60', 'max:180'],
+            'clip_max_seconds' => ['sometimes', 'integer', 'min:60', 'max:180', 'gte:clip_min_seconds'],
             'subtitle_template' => ['sometimes', 'nullable', 'string', 'max:32'],
             'segmentation_mode' => ['sometimes', 'nullable', 'in:viral,chapters'],
             'originality_mode' => ['sometimes', 'nullable', 'in:none,voiceover'],
@@ -102,8 +102,8 @@ class ProjectController
             }
         }
 
-        $clipMin = (int) ($request->input('clip_min_seconds', 15));
-        $clipMax = (int) ($request->input('clip_max_seconds', 60));
+        $clipMin = (int) ($request->input('clip_min_seconds', 60));
+        $clipMax = (int) ($request->input('clip_max_seconds', 180));
 
         // Use request accessors for optional fields to avoid edge cases where
         // validated payload may omit optional keys (e.g. false boolean values).

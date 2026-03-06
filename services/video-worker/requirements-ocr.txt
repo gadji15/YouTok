@@ -1,0 +1,4 @@
+# Optional OCR deps for text-aware dynamic crop.
+# Requires `tesseract-ocr` system package.
+pytesseract>=0.3.10,<0.4
+PyYAML>=6.0.1,<7

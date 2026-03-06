@@ -88,8 +88,10 @@ class Settings(BaseSettings):
     )
 
     max_clips: int = Field(8, ge=1, le=50)
-    clip_min_seconds: float = Field(15.0, ge=1)
-    clip_max_seconds: float = Field(60.0, ge=1)
+
+    # Product constraint (mode viral + mode chapters): output clips should generally be 60–180s.
+    clip_min_seconds: float = Field(60.0, ge=1)
+    clip_max_seconds: float = Field(180.0, ge=1)
 
     subtitles_enabled: bool = Field(
         True,
@@ -161,6 +163,53 @@ class Settings(BaseSettings):
     )
 
     target_fps: int = Field(30, ge=1, le=60)
+
+    # Text-aware dynamic crop (Option A MVP)
+    text_aware_crop_enabled: bool = Field(
+        False,
+        description="If true, run OCR-guided dynamic crop before render (vertical output only)",
+    )
+
+    text_aware_crop_sample_fps: float = Field(
+        5.0,
+        ge=0.5,
+        le=12.0,
+        description="Sample FPS for OCR detection (higher = slower)",
+    )
+
+    text_aware_crop_padding_ratio: float = Field(
+        0.18,
+        ge=0.0,
+        le=0.6,
+        description="Padding ratio around detected text/face box",
+    )
+
+    text_aware_crop_ocr_lang: str = Field(
+        "eng+fra+ara",
+        description="Tesseract language string, e.g. eng+fra+ara",
+    )
+
+    text_aware_crop_ocr_conf_threshold: float = Field(
+        60.0,
+        ge=0.0,
+        le=100.0,
+        description="Minimum per-word OCR confidence (0..100) to treat detection as text",
+    )
+
+    text_aware_crop_min_zoom: float = Field(1.0, ge=1.0, le=4.0)
+    text_aware_crop_max_zoom: float = Field(1.9, ge=1.0, le=4.0)
+
+    text_aware_crop_reading_hold_sec: float = Field(
+        0.8,
+        ge=0.0,
+        le=10.0,
+        description="Seconds of continuous text required to enable reading-mode smoothing",
+    )
+
+    text_aware_crop_debug_frames: bool = Field(
+        False,
+        description="If true, save sampled debug frames with detected boxes",
+    )
 
     # Part 8 — viral engine (render-time optimizations)
     viral_engine_enabled: bool = Field(

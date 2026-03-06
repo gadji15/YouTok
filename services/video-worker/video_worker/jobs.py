@@ -31,6 +31,7 @@ from .pipeline.word_alignment import (
 from .redis_conn import get_redis
 from .storage import get_s3_config, s3_enabled, upload_file_to_s3
 from .utils.errors import format_exception_short
+from .utils.ffprobe import probe_video
 from .utils.files import atomic_write_text
 from .utils.retry import retry
 
@@ -300,17 +301,20 @@ def process_job(
         logger.warning("voiceover.disabled_missing_openai_key")
         effective_originality_mode = "none"
 
-    effective_min_seconds = settings.clip_min_seconds if clip_min_seconds is None else float(clip_min_seconds)
-    effective_max_seconds = settings.clip_max_seconds if clip_max_seconds is None else float(clip_max_seconds)
+    # Product rules:
+    # - Mode viral: find "viral" moments but never output <60s or >180s.
+    # - Mode chapters: slice into 3-minute chunks (180s); merge a small tail (<60s) into
+    #   the previous chunk (handled by build_chapter_clips / build_sequential_clips).
 
-    # Product constraint (viral mode): clips must be 15–60 seconds (TikTok/Reels-ready).
+    effective_min_seconds = 60.0
+
     if effective_segmentation_mode == "viral":
-        effective_min_seconds = max(15.0, min(60.0, effective_min_seconds))
-        effective_max_seconds = max(effective_min_seconds, min(60.0, effective_max_seconds))
+        # Allow callers to request a smaller max (still clamped to <=180s).
+        raw_max = settings.clip_max_seconds if clip_max_seconds is None else float(clip_max_seconds)
+        effective_max_seconds = max(effective_min_seconds, min(180.0, float(raw_max)))
     else:
-        # Chapter/slice mode still uses clip_max_seconds as the slice size.
-        effective_min_seconds = max(15.0, min(60.0, effective_min_seconds))
-        effective_max_seconds = max(effective_min_seconds, min(60.0, effective_max_seconds))
+        # Chapters mode uses fixed 3-minute slices.
+        effective_max_seconds = 180.0
 
     effective_max_clips = settings.max_clips if max_clips is None else int(max_clips)
     if effective_segmentation_mode == "viral":
@@ -876,6 +880,15 @@ def process_job(
                     "stabilization_enabled": settings.stabilization_enabled,
                     "visual_enhance_enabled": settings.visual_enhance_enabled,
                     "ui_safe_ymin": settings.ui_safe_ymin,
+                    "text_aware_crop_enabled": settings.text_aware_crop_enabled,
+                    "text_aware_crop_sample_fps": settings.text_aware_crop_sample_fps,
+                    "text_aware_crop_padding_ratio": settings.text_aware_crop_padding_ratio,
+                    "text_aware_crop_ocr_lang": settings.text_aware_crop_ocr_lang,
+                    "text_aware_crop_ocr_conf_threshold": settings.text_aware_crop_ocr_conf_threshold,
+                    "text_aware_crop_min_zoom": settings.text_aware_crop_min_zoom,
+                    "text_aware_crop_max_zoom": settings.text_aware_crop_max_zoom,
+                    "text_aware_crop_reading_hold_sec": settings.text_aware_crop_reading_hold_sec,
+                    "text_aware_crop_debug_frames": settings.text_aware_crop_debug_frames,
                     "viral_engine_enabled": effective_viral_engine_enabled,
                     "viral_effect_style": effective_viral_effect_style,
                     "viral_zoom_intensity": effective_viral_zoom_intensity,
@@ -961,6 +974,15 @@ def process_job(
                 quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
                 quality_gate_max_attempts=settings.quality_gate_max_attempts,
                 ui_safe_ymin=settings.ui_safe_ymin,
+                text_aware_crop_enabled=settings.text_aware_crop_enabled,
+                text_aware_crop_sample_fps=settings.text_aware_crop_sample_fps,
+                text_aware_crop_padding_ratio=settings.text_aware_crop_padding_ratio,
+                text_aware_crop_ocr_lang=settings.text_aware_crop_ocr_lang,
+                text_aware_crop_ocr_conf_threshold=settings.text_aware_crop_ocr_conf_threshold,
+                text_aware_crop_min_zoom=settings.text_aware_crop_min_zoom,
+                text_aware_crop_max_zoom=settings.text_aware_crop_max_zoom,
+                text_aware_crop_reading_hold_sec=settings.text_aware_crop_reading_hold_sec,
+                text_aware_crop_debug_frames=settings.text_aware_crop_debug_frames,
                 viral_engine_enabled=effective_viral_engine_enabled,
                 viral_effect_style=effective_viral_effect_style,
                 viral_zoom_intensity=effective_viral_zoom_intensity,

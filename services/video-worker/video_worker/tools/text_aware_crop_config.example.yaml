@@ -1,0 +1,17 @@
+# Example config for video_worker/tools/text_aware_crop.py
+
+out_w: 1080
+out_h: 1920
+
+target_fps: 30
+sample_fps: 5.0
+padding_ratio: 0.18
+
+ocr_lang: eng+fra+ara
+ocr_conf_threshold: 60.0
+
+min_zoom: 1.0
+max_zoom: 1.9
+reading_hold_sec: 0.8
+
+debug_frames: false

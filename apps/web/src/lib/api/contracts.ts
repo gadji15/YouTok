@@ -1,7 +1,7 @@
 export type ApiProjectStatus = 'queued' | 'processing' | 'completed' | 'failed';
 export type ApiClipStatus = 'pending' | 'ready' | 'failed';
 
-export type ApiProjectLanguage = 'fr' | 'en';
+export type ApiProjectLanguage = 'fr' | 'en' | 'ar';
 export type ApiProjectSegmentationMode = 'viral' | 'chapters';
 export type ApiProjectOriginalityMode = 'none' | 'voiceover';
 export type ApiProjectOutputAspect = 'vertical' | 'source';

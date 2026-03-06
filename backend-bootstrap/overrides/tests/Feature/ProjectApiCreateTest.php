@@ -28,8 +28,8 @@ class ProjectApiCreateTest extends TestCase
                 'youtube_url' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
                 'language' => 'fr',
                 'subtitles_enabled' => false,
-                'clip_min_seconds' => 15,
-                'clip_max_seconds' => 60,
+                'clip_min_seconds' => 60,
+                'clip_max_seconds' => 180,
                 'subtitle_template' => 'modern',
                 'segmentation_mode' => 'chapters',
                 'originality_mode' => 'voiceover',
@@ -43,8 +43,8 @@ class ProjectApiCreateTest extends TestCase
         $this->assertSame(ProjectStatus::queued, $project->status);
         $this->assertSame('fr', $project->language);
         $this->assertFalse($project->subtitles_enabled);
-        $this->assertSame(15, $project->clip_min_seconds);
-        $this->assertSame(60, $project->clip_max_seconds);
+        $this->assertSame(60, $project->clip_min_seconds);
+        $this->assertSame(180, $project->clip_max_seconds);
         $this->assertSame('modern', $project->subtitle_template);
         $this->assertSame('chapters', $project->segmentation_mode);
         $this->assertSame('voiceover', $project->originality_mode);

@@ -13,6 +13,10 @@ RUN apt-get update \
         fonts-dejavu-core \
         fonts-noto-core \
         fonts-noto-color-emoji \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        tesseract-ocr-fra \
+        tesseract-ocr-ara \
     && rm -rf /var/lib/apt/lists/*
 
 ARG PYTORCH_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu
@@ -33,8 +37,9 @@ RUN pip install --no-cache-dir --prefer-binary -r requirements-whisper.txt
 # best-effort and the pipeline still works without it.
 COPY requirements-align.txt ./requirements-align.txt
 COPY requirements-cv.txt ./requirements-cv.txt
+COPY requirements-ocr.txt ./requirements-ocr.txt
 ARG TARGETARCH
-RUN if [ -z "$TARGETARCH" ] || [ "$TARGETARCH" = "amd64" ]; then pip install --no-cache-dir --prefer-binary -r requirements-align.txt -r requirements-cv.txt; fi
+RUN if [ -z "$TARGETARCH" ] || [ "$TARGETARCH" = "amd64" ]; then pip install --no-cache-dir --prefer-binary -r requirements-align.txt -r requirements-cv.txt -r requirements-ocr.txt; fi
 
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt

@@ -60,6 +60,11 @@ def _dedupe_immediate_words(text: str) -> str:
 
 def _remove_fillers(text: str, *, language: str) -> str:
     lang = (language or "en").lower().strip()
+
+    # For Arabic, filler lists and word tokenization rules are different; keep it simple.
+    if lang == "ar":
+        return text
+
     fillers = _FILLERS_FR if lang == "fr" else _FILLERS_EN
 
     parts = text.split()
@@ -138,6 +143,11 @@ def spellcheck_cleanup_text(text: str, *, language: str) -> str:
         return ""
 
     lang = (language or "en").strip().lower()
+
+    # Arabic: do not apply Latin spellcheck heuristics.
+    if lang == "ar":
+        return cleaned
+
     sc = _get_spellchecker(lang)
     if sc is None:
         return cleaned

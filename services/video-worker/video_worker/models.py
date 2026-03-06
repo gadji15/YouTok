@@ -15,7 +15,7 @@ class JobCreateRequest(BaseModel):
     callback_url: HttpUrl
     callback_secret: str
 
-    language: Literal["fr", "en"] | None = None
+    language: Literal["fr", "en", "ar"] | None = None
 
     segmentation_mode: Literal["viral", "chapters"] = "viral"
 
