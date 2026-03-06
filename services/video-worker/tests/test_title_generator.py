@@ -33,5 +33,7 @@ def test_generate_title_candidates_heuristic_produces_top3_and_max_len() -> None
     assert len(res.top3) <= 3
 
     for c in res.candidates:
-        assert len(c.title) <= 60
+        assert len(c.title) <= 80
         assert 0.0 <= c.score <= 1.0
+
+    assert 5 <= len(res.hashtags) <= 8

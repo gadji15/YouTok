@@ -18,6 +18,19 @@ export type ApiClipTitleCandidates = {
   provider: string | null;
   description: string | null;
   hashtags: string[];
+
+  // Part 5 (optional)
+  hooks?: string[];
+  analysis?: {
+    summary?: string | null;
+    theme?: string | null;
+    key_phrase?: string | null;
+    clip_key_phrase?: string | null;
+    keywords?: string[];
+    signals?: string[];
+    clip_phrases?: string[];
+  } | null;
+
   candidates: { title: string; score: number; features?: Record<string, number> | null }[];
   top3: string[];
 };

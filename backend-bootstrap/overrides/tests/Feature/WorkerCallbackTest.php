@@ -173,6 +173,8 @@ class WorkerCallbackTest extends TestCase
                                     ['title' => 'Un hook viral pour tester', 'score' => 0.9],
                                     ['title' => 'Et si tu faisais ça ?', 'score' => 0.7],
                                 ],
+                                'hooks' => ['Un hook viral pour tester', 'Et si tu faisais ça ?', 'Personne ne te dit ça'],
+                                'analysis' => ['theme' => 'islam', 'summary' => 'Résumé', 'signals' => ['wisdom']],
                                 'top3' => ['Un hook viral pour tester', 'Et si tu faisais ça ?'],
                             ],
                             'quality_summary' => [
@@ -205,6 +207,8 @@ class WorkerCallbackTest extends TestCase
         $this->assertSame('Un hook viral pour tester', $clip->title);
         $this->assertIsArray($clip->title_candidates);
         $this->assertSame('heuristic', $clip->title_candidates['provider']);
+        $this->assertSame('islam', $clip->title_candidates['analysis']['theme']);
+        $this->assertSame(['Un hook viral pour tester', 'Et si tu faisais ça ?', 'Personne ne te dit ça'], $clip->title_candidates['hooks']);
 
         $this->assertIsArray($clip->quality_summary);
         $this->assertSame('cinematic_karaoke', $clip->quality_summary['template']);

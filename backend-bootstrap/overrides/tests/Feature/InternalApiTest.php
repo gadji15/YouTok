@@ -148,6 +148,23 @@ class InternalApiTest extends TestCase
             'id' => (string) $clip->id,
             'tiktok_caption' => 'Hello world',
         ]);
+
+        $this->withHeader('X-Internal-Secret', 'test-secret')
+            ->patchJson('/api/clips/'.(string) $clip->id, [
+                'title' => 'A new title',
+                'hashtags' => ['#pourtoi', '#islam'],
+            ])
+            ->assertOk()
+            ->assertJson([
+                'id' => (string) $clip->id,
+                'title' => 'A new title',
+            ])
+            ->assertJsonPath('title_candidates.hashtags.0', '#pourtoi');
+
+        $clip->refresh();
+        $this->assertSame('A new title', $clip->title);
+        $this->assertIsArray($clip->title_candidates);
+        $this->assertSame(['#pourtoi', '#islam'], $clip->title_candidates['hashtags']);
     }
 
     public function test_project_delete_requires_internal_secret_and_deletes_artifacts(): void

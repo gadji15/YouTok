@@ -320,7 +320,20 @@
       "empty": "No title suggestions yet.",
       "copy": "Copy",
       "copied": "Copied",
-      "score": "Score: {value}%"
+      "score": "Score: {value}%",
+      "editTitle": "Title",
+      "description": "Description",
+      "editHashtags": "Hashtags",
+      "save": "Save",
+      "saving": "Saving…",
+      "alternatives": "Alternatives",
+      "use": "Use",
+      "analysis": {
+        "title": "Analysis",
+        "theme": "Theme",
+        "summary": "Summary",
+        "keyPhrase": "Key phrase"
+      }
     },
     "actions": {
       "title": "Actions",

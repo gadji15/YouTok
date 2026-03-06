@@ -54,6 +54,12 @@ class WorkerCallbackController
             'artifacts.clips.*.title_candidates.description' => ['sometimes', 'nullable', 'string', 'max:255'],
             'artifacts.clips.*.title_candidates.hashtags' => ['sometimes', 'nullable', 'array', 'max:10'],
             'artifacts.clips.*.title_candidates.hashtags.*' => ['string', 'max:50'],
+
+            // Part 5: hooks + analysis metadata (best-effort; stored as JSON)
+            'artifacts.clips.*.title_candidates.hooks' => ['sometimes', 'nullable', 'array', 'max:20'],
+            'artifacts.clips.*.title_candidates.hooks.*' => ['string', 'max:255'],
+            'artifacts.clips.*.title_candidates.analysis' => ['sometimes', 'nullable', 'array', 'max:30'],
+
             'artifacts.clips.*.title_candidates.candidates' => ['sometimes', 'array', 'max:16'],
             'artifacts.clips.*.title_candidates.candidates.*.title' => ['sometimes', 'string', 'max:255'],
             'artifacts.clips.*.title_candidates.candidates.*.score' => ['sometimes', 'numeric'],

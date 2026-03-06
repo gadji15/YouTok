@@ -26,6 +26,11 @@ class TitleCandidates(BaseModel):
     provider: str | None = None
     description: str | None = None
     hashtags: list[str] = Field(default_factory=list)
+
+    # Optional extended copywriting fields (Part 5).
+    hooks: list[str] = Field(default_factory=list)
+    analysis: dict | None = None
+
     candidates: list[TitleCandidate] = Field(default_factory=list)
     top3: list[str] = Field(default_factory=list)
 
