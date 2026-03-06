@@ -27,7 +27,8 @@ fi
 fix_env_perms() {
   if [ -f .env ]; then
     chown "${DOCKER_UID:-1000}":"${DOCKER_GID:-1000}" .env 2>/dev/null || true
-    chmod 660 .env 2>/dev/null || true
+    # Keep it readable in the common case where the host user ID doesn't match DOCKER_UID.
+    chmod 644 .env 2>/dev/null || true
   fi
 }
 
