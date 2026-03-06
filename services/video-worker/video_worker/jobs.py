@@ -300,17 +300,20 @@ def process_job(
         logger.warning("voiceover.disabled_missing_openai_key")
         effective_originality_mode = "none"
 
-    effective_min_seconds = settings.clip_min_seconds if clip_min_seconds is None else float(clip_min_seconds)
-    effective_max_seconds = settings.clip_max_seconds if clip_max_seconds is None else float(clip_max_seconds)
+    # NOTE: For now we keep clip_min_seconds / clip_max_seconds in the API contract,
+    # but the product rules depend on the segmentation mode.
 
-    # Product constraint (viral mode): clips must be 15–60 seconds (TikTok/Reels-ready).
+    # Mode viral:
+    # - clips must never be < 60s nor > 180s
+    # Mode chapters:
+    # - use 3-minute slices (180s), and merge a "small" tail (<60s) with the previous slice
+    #   (handled by build_chapter_clips / build_sequential_clips).
     if effective_segmentation_mode == "viral":
-        effective_min_seconds = max(15.0, min(60.0, effective_min_seconds))
-        effective_max_seconds = max(effective_min_seconds, min(60.0, effective_max_seconds))
+        effective_min_seconds = 60.0
+        effective_max_seconds = 180.0
     else:
-        # Chapter/slice mode still uses clip_max_seconds as the slice size.
-        effective_min_seconds = max(15.0, min(60.0, effective_min_seconds))
-        effective_max_seconds = max(effective_min_seconds, min(60.0, effective_max_seconds))
+        effective_min_seconds = 60.0
+        effective_max_seconds = 180.0
 
     effective_max_clips = settings.max_clips if max_clips is None else int(max_clips)
     if effective_segmentation_mode == "viral":
