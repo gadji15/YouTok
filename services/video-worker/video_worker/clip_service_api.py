@@ -6,14 +6,14 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from .config import get_settings
+from .clip_service_settings import get_clip_service_settings
 from .logging import configure_logging, get_logger
 from .pipeline.clip import render_clips
 from .pipeline.types import ClipCandidate, TranscriptSegment, WordTiming
 from .utils.errors import format_exception_short
 
 
-settings = get_settings()
+settings = get_clip_service_settings()
 configure_logging(settings.log_level)
 
 app = FastAPI(title="clip-service", version="0.1")

@@ -178,7 +178,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
-    command: ["uvicorn", "video_worker.clip_service_api:app", "--host=0.0.0.0", "--port=8000"]
+    command: ["uvicorn", "video_worker.clip_service_api:app", "--host=0.0.0.0", "--port=8000", "--no-access-log"]
 
   video-worker-worker:
     profiles: ["video-worker"]

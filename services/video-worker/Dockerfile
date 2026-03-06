@@ -4,6 +4,8 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
         ffmpeg \
         gcc g++ \
         libglib2.0-0 \
