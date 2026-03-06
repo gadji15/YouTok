@@ -216,7 +216,7 @@ def write_stylized_ass_for_clip(
             continue
 
         events.append(
-            "Dialogue: 0,{},{},Default,,0,0,0,,{}".format(
+            "Dialogue: 0,{},{},Default,N,0,0,0,,{}".format(
                 _ass_ts(start),
                 _ass_ts(end),
                 text,
@@ -1001,7 +1001,7 @@ def write_word_level_ass_for_clip(
             continue
 
         events.append(
-            "Dialogue: 0,{},{},{},,0,0,0,,{}".format(
+            "Dialogue: 0,{},{},{},N,0,0,0,,{}".format(
                 _ass_ts(start),
                 _ass_ts(end),
                 style,
