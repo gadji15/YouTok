@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..utils.files import atomic_write_text
-from ..utils.text_measure import measure_text_width_px, resolve_font_path, strip_ass_tags
+from ..utils.text_measure import contains_rtl, measure_text_width_px, prepare_text_for_ass, resolve_font_path, strip_ass_tags
 from .types import TranscriptSegment, WordTiming
 
 
@@ -291,9 +291,7 @@ def write_word_level_ass_for_clip(
         return t.strip()
 
     def _contains_rtl(t: str) -> bool:
-        import re
-
-        return re.search(r"[\u0590-\u08FF]", t) is not None
+        return contains_rtl(t)
 
     karaoke_enabled = template in {"karaoke", "modern_karaoke", "cinematic_karaoke"}
 
@@ -418,9 +416,14 @@ def write_word_level_ass_for_clip(
 
     clip_words.sort(key=lambda x: (x.start_seconds, x.end_seconds))
 
-    if any(_contains_rtl(w.word) for w in clip_words):
+    rtl_enabled = any(_contains_rtl(w.word) for w in clip_words)
+    if rtl_enabled:
         karaoke_enabled = False
         cinematic = False
+
+        fp = resolve_font_path(prefer_arabic=True)
+        if fp is not None:
+            font_path = fp
 
     def _norm_for_match(t: str) -> str:
         import re
@@ -666,7 +669,12 @@ def write_word_level_ass_for_clip(
             return 0
         if font_path is None:
             return len(" ".join(words_plain)) * max(1, int(font_px))
-        return measure_text_width_px(text=" ".join(words_plain), font_path=font_path, font_size=int(font_px))
+        return measure_text_width_px(
+            text=" ".join(words_plain),
+            font_path=font_path,
+            font_size=int(font_px),
+            rtl=rtl_enabled,
+        )
 
     def _split_two_lines_px(
         parts_formatted: list[str],
@@ -843,7 +851,6 @@ def write_word_level_ass_for_clip(
         if reading_mode:
             local_cinematic = False
 
-            # Reading mode: centered + background. No karaoke/highlights.
             chosen_font_px = int(reading_font_size)
             parts_formatted = [w.word for w in chunk]
             parts_plain = [w.word for w in chunk]
@@ -856,22 +863,45 @@ def write_word_level_ass_for_clip(
                 chars_per_line=max(max_chars_per_line, 48),
             )
 
+            tokens = [strip_ass_tags(t).strip() for t in (line1 + line2) if strip_ass_tags(t).strip()]
+
+            lines: list[str] = []
+            cur_line: list[str] = []
+
+            for tok in tokens:
+                if not cur_line:
+                    cur_line = [tok]
+                    continue
+
+                cand = cur_line + [tok]
+                if _measure_line_width_px(cand, font_px=chosen_font_px) <= safe_width_px:
+                    cur_line = cand
+                else:
+                    lines.append(" ".join(cur_line))
+                    cur_line = [tok]
+
+            if cur_line:
+                lines.append(" ".join(cur_line))
+
+            if rtl_enabled:
+                lines = [prepare_text_for_ass(ln, rtl=True) for ln in lines if ln.strip()]
+
+            text = "\\N".join(lines)
+
+            payload = "{" + reading_prefix + f"\\fs{chosen_font_px}" + "}" + text
+            return start, end, "Reading", payload
+
+        if rtl_enabled:
+            l1 = prepare_text_for_ass(" ".join([strip_ass_tags(p) for p in line1]), rtl=True) if line1 else ""
+            l2 = prepare_text_for_ass(" ".join([strip_ass_tags(p) for p in line2]), rtl=True) if line2 else ""
+            text = (l1 + "\\N" + l2).strip("\\N") if l2 else l1
+        else:
             if line2:
                 text = " ".join(line1) + "\\N" + " ".join(line2)
             else:
                 text = " ".join(line1)
 
-            payload = "{" + reading_prefix + f"\\fs{chosen_font_px}" + "}" + text
-            return start, end, "Reading", payload
-
-        if line2:
-            text = " ".join(line1) + "\\N" + " ".join(line2)
-        else:
-            text = " ".join(line1)
-
         if local_cinematic:
-            # Subtle scale-in at the start of each event.
-            # This works well on TikTok without being distracting.
             text = "{\\t(0,120,\\fscx105\\fscy105)}" + text
 
         payload = "{" + pos_prefix + f"\\fs{chosen_font_px}" + "}" + text
@@ -880,8 +910,6 @@ def write_word_level_ass_for_clip(
     max_words_per_event = max_words_per_line * 2
     max_chars_per_event = max_chars_per_line * 2
 
-    # Without karaoke, long events feel like "frozen" subtitles because the text doesn't change.
-    # With karaoke enabled, keeping events a bit longer is fine since highlighting moves.
     max_event_seconds = 6.0 if karaoke_enabled else 2.8
 
     chunks: list[list[WordTiming]] = []
@@ -893,13 +921,11 @@ def write_word_level_ass_for_clip(
 
         add = len(w.word) + (1 if cur else 0)
 
-        # Flush current chunk on obvious breaks.
         if cur and gap > 0.85:
             chunks.append(cur)
             cur = []
             cur_chars = 0
 
-        # Enforce max chunk duration even when speech is continuous (small gaps).
         if cur:
             next_duration = w.end_seconds - cur[0].start_seconds
             if next_duration > max_event_seconds:
@@ -917,7 +943,6 @@ def write_word_level_ass_for_clip(
         cur.append(w)
         cur_chars += add
 
-        # Punchline-friendly split: if we hit a sentence terminator, close the chunk.
         if len(cur) >= 3 and w.word and w.word[-1] in {".", "!", "?", "…"}:
             dur = cur[-1].end_seconds - cur[0].start_seconds
             if dur >= 0.9:
