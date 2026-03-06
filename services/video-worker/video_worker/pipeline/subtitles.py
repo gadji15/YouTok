@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..utils.files import atomic_write_text
+from ..utils.text_measure import measure_text_width_px, prepare_text_for_ass, resolve_font_path, strip_ass_tags
 from .types import TranscriptSegment, WordTiming
 
 
@@ -85,10 +86,7 @@ def _scale_font_size(*, base: int, play_res_x: int, play_res_y: int) -> int:
     if play_res_x > play_res_y:
         scaled *= 1.35
 
-    return max(30, min(112, int(round(scaled))))
-
-
-def _wrap(text: str, *, max_chars: int = 32) -> str:
+    return max(30, min(112, in</old_code><new_code>def _wrap(text: str, *, max_chars: int = 32) -> str:
     # break words that exceed max_chars to avoid horizontal overflow
     def _break_long_word(word: str) -> list[str]:
         if len(word) <= max_chars:
@@ -159,17 +157,16 @@ def write_stylized_ass_for_clip(
         # A cleaner, more modern look: slightly larger, stronger outline, and a safer bottom margin.
         style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,{secondary},&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,6,0,2,120,120,260,1"
 
+    reading_font_size = max(min_font_size, min(max_font_size, int(round(float(font_size) * 0.92))))
+    reading_style_line = (
+        f"Style: Reading,Noto Sans,{reading_font_size},&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,3,20,0,5,0,0,0,1"
+    )
+
     header = "\n".join(
         [
             "[Script Info]",
             "ScriptType: v4.00+",
-            f"PlayResX: {play_res_x}",
-            f"PlayResY: {play_res_y}",
-            "WrapStyle: 2",
-            "ScaledBorderAndShadow: yes",
-            "",
-            "[V4+ Styles]",
-            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+            f" BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
             style_line,
             "",
             "[Events]",
@@ -267,6 +264,22 @@ def write_word_level_ass_for_clip(
         "motivation_karaoke": "cinematic_karaoke",
     }.get(template, template)
 
+    font_path = resolve_font_path()
+
+    # Safe width (spec): PlayResX - 2*72px at 1080-wide.
+    side_margin_px = int(round(72 * float(play_res_x) / 1080.0))
+    side_margin_px = max(0, min(play_res_x // 3, side_margin_px))
+    safe_width_px = max(1, int(play_res_x) - 2 * int(side_margin_px))
+
+    # Font bounds (spec): 56px–110px at 1080x1920. For non-vertical outputs we
+    # keep a wider range so captions remain readable.
+    if play_res_x <= play_res_y:
+        min_font_px = max(30, int(round(56 * float(play_res_y) / 1920.0)))
+        max_font_px = max(min_font_px, int(round(110 * float(play_res_y) / 1920.0)))
+    else:
+        min_font_px = 30
+        max_font_px = 112
+
     def _clean_text(t: str) -> str:
         t = t.replace("{", "(").replace("}", ")")
         # Strip common bidi markers that can break line layout.
@@ -289,6 +302,9 @@ def write_word_level_ass_for_clip(
         base_size = 84
 
     font_size = _scale_font_size(base=base_size, play_res_x=play_res_x, play_res_y=play_res_y)
+    font_size = max(int(min_font_px), min(int(max_font_px), int(font_size)))
+
+    
 
     # Styles:
     # - Karaoke (VSFilter): Primary = base, Secondary = highlight
@@ -309,6 +325,18 @@ def write_word_level_ass_for_clip(
         if template == "cinematic":
             style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
 
+    reading_outline = int(round(18 * float(play_res_y) / 1920.0))
+    reading_font_size = max(min_font_size, min(max_font_size, int(round(float(font_size) * 0.92))))
+
+    # Reading mode: centered with a semi-opaque box for long passages.
+    # BorderStyle=3 draws a rectangle behind the text; Outline acts as padding.
+    reading_style_line = (
+        f"Style: Reading,Noto Sans,{reading_font_size},"
+        "&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,"
+        "1,0,0,0,100,100,0,0,3,"
+        f"{reading_outline},0,5,0,0,0,1"
+    )
+
     header = "\n".join(
         [
             "[Script Info]",
@@ -321,6 +349,7 @@ def write_word_level_ass_for_clip(
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
             style_line,
+            reading_style_line,
             "",
             "[Events]",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -335,9 +364,11 @@ def write_word_level_ass_for_clip(
 
     # Cinematic template: subtle pop-in and slightly stronger blur for a smoother look.
     if template in {"cinematic", "cinematic_karaoke"}:
-        pos_tag = f"{{\\an{an}\\pos({px},{py})\\blur3\\fad(80,120)}}"
+        pos_prefix = f"\\an{an}\\pos({px},{py})\\blur3\\fad(80,120)"
     else:
-        pos_tag = f"{{\\an{an}\\pos({px},{py})\\blur2}}"
+        pos_prefix = f"\\an{an}\\pos({px},{py})\\blur2"
+
+    reading_prefix = f"\\an5\\pos({play_res_x // 2},{play_res_y // 2})\\blur2"
 
     # Select words for the clip and shift times to clip-relative.
     clip_words: list[WordTiming] = []
@@ -385,9 +416,16 @@ def write_word_level_ass_for_clip(
 
     clip_words.sort(key=lambda x: (x.start_seconds, x.end_seconds))
 
-    if any(_contains_rtl(w.word) for w in clip_words):
+    rtl_detected = any(_contains_rtl(w.word) for w in clip_words)
+    if rtl_detected:
         karaoke_enabled = False
         cinematic = False
+
+    side_margin_px = int(round(72.0 * float(play_res_x) / 1080.0))
+    safe_width_px = max(1, int(play_res_x) - 2 * side_margin_px)
+
+    font_path_latin = resolve_font_path(prefer_arabic=False)
+    font_path_arabic = resolve_font_path(prefer_arabic=True)
 
     def _norm_for_match(t: str) -> str:
         import re
@@ -541,96 +579,90 @@ def write_word_level_ass_for_clip(
         k = _norm_for_match(word)
         return bool(k) and k in hook_words
 
-    def _split_two_lines(parts: list[str], lens: list[int]) -> tuple[list[str], list[str]]:
-        # Split text parts into up to two lines.
-        # Goal (Part 4): keep lines short (<= max_words_per_line) and balanced.
+    def _line_width_px(words_plain: list[str], *, font_px: int, rtl: bool) -> int:
+        if not words_plain:
+            return 0
 
-        def _break_part(p: str) -> list[str]:
-            if len(p) <= max_chars_per_line:
-                return [p]
-            return [p[i : i + max_chars_per_line] for i in range(0, len(p), max_chars_per_line)]
+        fp = font_path_arabic if rtl else font_path_latin
+        return measure_text_width_px(text=" ".join(words_plain), font_path=fp, font_size=int(font_px), rtl=rtl)
 
-        expanded_parts: list[str] = []
-        expanded_lens: list[int] = []
-        for p, ln in zip(parts, lens):
-            if ln > max_chars_per_line:
-                subs = _break_part(p)
-                expanded_parts.extend(subs)
-                expanded_lens.extend([len(s) for s in subs])
-            else:
-                expanded_parts.append(p)
-                expanded_lens.append(int(ln))
+    def _split_two_lines_px(
+        parts_plain: list[str],
+        *,
+        font_px: int,
+        rtl: bool,
+        words_per_line: int,
+    ) -> tuple[list[int], list[int], bool]:
+        if not parts_plain:
+            return [], [], True
 
-        if not expanded_parts:
-            return [], []
+        n = len(parts_plain)
 
-        def _line_char_len(ws_lens: list[int]) -> int:
-            if not ws_lens:
-                return 0
-            return int(sum(ws_lens) + max(0, len(ws_lens) - 1))
+        def _fits(words: list[str]) -> bool:
+            if not words:
+                return True
+            if len(words) > words_per_line:
+                return False
+            if max_chars_per_line > 0 and len(" ".join(words)) > max_chars_per_line:
+                return False
+            return _line_width_px(words, font_px=font_px, rtl=rtl) <= safe_width_px
 
-        total_chars = _line_char_len(expanded_lens)
-        if len(expanded_parts) <= max_words_per_line and total_chars <= max_chars_per_line:
-            return expanded_parts, []
+        # One line.
+        if n <= words_per_line and _fits(parts_plain):
+            return list(range(n)), [], True
 
-        # Search for a good split point.
-        best_split = None
+        best = None
         best_score = None
 
-        for split in range(1, len(expanded_parts)):
-            l1_lens = expanded_lens[:split]
-            l2_lens = expanded_lens[split:]
+        for split in range(1, n):
+            a = parts_plain[:split]
+            b = parts_plain[split:]
 
-            if len(l1_lens) > max_words_per_line or len(l2_lens) > max_words_per_line:
+            if not _fits(a) or not _fits(b):
                 continue
 
-            c1 = _line_char_len(l1_lens)
-            c2 = _line_char_len(l2_lens)
+            w1 = _line_width_px(a, font_px=font_px, rtl=rtl)
+            w2 = _line_width_px(b, font_px=font_px, rtl=rtl)
 
-            if c1 > max_chars_per_line or c2 > max_chars_per_line:
-                continue
-
-            # Prefer balanced lines and avoid super-short second line.
-            score = abs(c1 - c2) + abs(len(l1_lens) - len(l2_lens)) * 2
-            if min(len(l1_lens), len(l2_lens)) <= 1:
-                score += 10
+            # Prefer balanced lines and avoid a tiny last line.
+            score = abs(w1 - w2) + abs(len(a) - len(b)) * 80
+            if min(len(a), len(b)) <= 1:
+                score += 500
 
             if best_score is None or score < best_score:
                 best_score = score
-                best_split = split
+                best = split
 
-        if best_split is not None:
-            return expanded_parts[:best_split], expanded_parts[best_split:]
+        if best is None:
+            # Fallback: greedy fill line1 then spill to line2.
+            line1: list[int] = []
+            line2: list[int] = []
 
-        # Fallback: greedy fill line1 then spill to line2.
-        line1: list[str] = []
-        line2: list[str] = []
-        c1 = 0
-        c2 = 0
+            for i in range(n):
+                if not line2:
+                    cand = [parts_plain[j] for j in line1 + [i]]
+                    if len(line1) < words_per_line and _fits(cand):
+                        line1.append(i)
+                        continue
 
-        for p, ln in zip(expanded_parts, expanded_lens):
-            add1 = ln + (1 if line1 else 0)
-            add2 = ln + (1 if line2 else 0)
+                if len(line2) < words_per_line:
+                    line2.append(i)
+                else:
+                    line2.append(i)
 
-            fits1 = (len(line1) < max_words_per_line) and (c1 + add1 <= max_chars_per_line)
-            fits2 = (len(line2) < max_words_per_line) and (c2 + add2 <= max_chars_per_line)
+            w1_ok = _fits([parts_plain[i] for i in line1])
+            w2_ok = _fits([parts_plain[i] for i in line2])
+            return line1, line2, bool(w1_ok and w2_ok)
 
-            if not line2 and fits1:
-                line1.append(p)
-                c1 += add1
-                continue
+        return list(range(best)), list(range(best, n)), True
 
-            if fits2:
-                line2.append(p)
-                c2 += add2
-            else:
-                line2.append(p)
+    reading_pos_tag = (
+        f"{{\\an5\\pos({play_res_x // 2},{int(round(float(play_res_y) * 0.52))})\\blur2\\fad(80,120)}}"
+    )
 
-        return line1, line2
-
-    def _emit_event(chunk: list[WordTiming]) -> tuple[float, float, str]:
+    def _emit_event(chunk: list[WordTiming]) -> tuple[float, float, str, str]:
         if not chunk:
-            return 0.0, 0.01, ""
+            return 0.0, 0.01, "Default", ""
 
         chunk = sorted(chunk, key=lambda x: (x.start_seconds, x.end_seconds))
         start = min(w.start_seconds for w in chunk)
@@ -638,7 +670,7 @@ def write_word_level_ass_for_clip(
         if end <= start:
             end = start + 0.01
 
-        cinematic = template in {"cinematic", "cinematic_karaoke"}
+        rtl = rtl_detected
 
         highlighted = 0
         max_highlights_per_event = 3
@@ -649,6 +681,8 @@ def write_word_level_ass_for_clip(
                 highlighted += 1
                 return prefix + f"{{\\c&H0033D6FF&\\b1\\bord7}}{w.word}{{\\r}}"
             return prefix + w.word
+
+        parts_plain = [strip_ass_tags(w.word) for w in chunk]
 
         if karaoke_enabled:
             dur_cs_total = max(1, int(round((end - start) * 100)))
@@ -663,24 +697,82 @@ def write_word_level_ass_for_clip(
             if drift != 0:
                 scaled[-1] = max(1, scaled[-1] + drift)
 
-            parts = [_format_word(w=chunk[i], prefix=f"{{\\k{scaled[i]}}}") for i in range(len(chunk))]
+            parts_formatted = [_format_word(w=chunk[i], prefix=f"{{\\k{scaled[i]}}}") for i in range(len(chunk))]
         else:
-            parts = [_format_word(w=w) for w in chunk]
+            parts_formatted = [_format_word(w=w) for w in chunk]
 
-        lens = [len(w.word) for w in chunk]
-        line1, line2 = _split_two_lines(parts, lens)
+        font_px = int(font_size)
+        reading_mode = False
 
-        if line2:
-            text = " ".join(line1) + "\\N" + " ".join(line2)
+        while True:
+            line1_idx, line2_idx, fits = _split_two_lines_px(
+                parts_plain,
+                font_px=font_px,
+                rtl=rtl,
+                words_per_line=max_words_per_line,
+            )
+
+            if fits:
+                break
+
+            if font_px <= min_font_size:
+                reading_mode = True
+                break
+
+            font_px = max(min_font_size, int(round(float(font_px) * 0.92)))
+
+        if reading_mode:
+            # Reading mode: centered + background. No karaoke/highlights.
+            font_px = int(reading_font_size)
+
+            l1, l2, _ = _split_two_lines_px(
+                parts_plain,
+                font_px=font_px,
+                rtl=rtl,
+                words_per_line=max(max_words_per_line, 8),
+            )
+
+            lines_plain: list[str] = []
+            if l1:
+                lines_plain.append(" ".join(parts_plain[i] for i in l1))
+            if l2:
+                lines_plain.append(" ".join(parts_plain[i] for i in l2))
+
+            if not lines_plain:
+                return start, end, "Reading", ""
+
+            if rtl:
+                lines_plain = [prepare_text_for_ass(ln, rtl=True) for ln in lines_plain]
+
+            text = "\\N".join(lines_plain)
+            return start, end, "Reading", reading_pos_tag + text
+
+        # Normal mode.
+        line1 = [parts_formatted[i] for i in line1_idx]
+        line2 = [parts_formatted[i] for i in line2_idx]
+
+        if rtl:
+            # In RTL mode, karaoke/cinematic are disabled above. Format using plain text.
+            lines_plain: list[str] = []
+            if line1_idx:
+                lines_plain.append(" ".join(parts_plain[i] for i in line1_idx))
+            if line2_idx:
+                lines_plain.append(" ".join(parts_plain[i] for i in line2_idx))
+            lines_plain = [prepare_text_for_ass(ln, rtl=True) for ln in lines_plain if ln.strip()]
+            text = "\\N".join(lines_plain)
         else:
-            text = " ".join(line1)
+            text = " ".join(line1) + ("\\N" + " ".join(line2) if line2 else "")
 
+        tags: list[str] = []
+        if font_px != int(font_size):
+            tags.append(f"\\fs{font_px}")
         if cinematic:
-            # Subtle scale-in at the start of each event.
-            # This works well on TikTok without being distracting.
-            text = "{\\t(0,120,\\fscx105\\fscy105)}" + text
+            tags.append("\\t(0,120,\\fscx105\\fscy105)")
 
-        return start, end, text
+        if tags:
+            text = "{" + "".join(tags) + "}" + text
+
+        return start, end, "Default", text
 
     max_words_per_event = max_words_per_line * 2
     max_chars_per_event = max_chars_per_line * 2
@@ -735,8 +827,18 @@ def write_word_level_ass_for_clip(
 
     events: list[str] = []
     for chunk in chunks:
-        start, end, text = _emit_event(chunk)
+        start, end, style, text = _emit_event(chunk)
         if not text:
+            continue
+
+        if style == "Reading":
+            events.append(
+                "Dialogue: 0,{},{},Reading,,0,0,0,,{}".format(
+                    _ass_ts(start),
+                    _ass_ts(end),
+                    text,
+                )
+            )
             continue
 
         events.append(
