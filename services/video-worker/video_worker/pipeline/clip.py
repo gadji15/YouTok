@@ -140,7 +140,7 @@ def render_clips(
     subtitles_enabled: bool = True,
     subtitle_template: str = "default",
     subtitle_max_words_per_line: int = 6,
-    subtitle_max_chars_per_line: int = 36,
+    subtitle_max_chars_per_line: int = 42,
     subtitle_clip_realign_enabled: bool = False,
     output_aspect: str = "vertical",
     target_fps: int = 30,
@@ -148,6 +148,10 @@ def render_clips(
     stabilization_enabled: bool = True,
     visual_enhance_enabled: bool = True,
     word_timings: list[WordTiming] | None = None,
+    # FFmpeg hardware acceleration (Part 1)
+    ffmpeg_hwaccel: str = "",
+    vaapi_device: str = "/dev/dri/renderD128",
+    vaapi_bitrate: str = "5M",
     word_timings_by_clip_id: dict[str, list[WordTiming]] | None = None,
     audio_override_by_clip_id: dict[str, Path] | None = None,
     quality_gate_enabled: bool = False,
@@ -156,7 +160,7 @@ def render_clips(
     ui_safe_ymin: float = 0.78,
     # Text-aware crop (Option A MVP)
     text_aware_crop_enabled: bool = False,
-    text_aware_crop_sample_fps: float = 5.0,
+    text_aware_crop_sample_fps: float = 2.0,
     text_aware_crop_padding_ratio: float = 0.18,
     text_aware_crop_ocr_lang: str = "eng+fra+ara",
     text_aware_crop_ocr_conf_threshold: float = 60.0,
@@ -225,6 +229,10 @@ def render_clips(
             return None
 
     fps = max(1, int(target_fps))
+
+    effective_hwaccel = (ffmpeg_hwaccel or "").strip().lower()
+    effective_vaapi_device = (vaapi_device or "/dev/dri/renderD128").strip() or "/dev/dri/renderD128"
+    effective_vaapi_bitrate = (vaapi_bitrate or "5M").strip() or "5M"
 
     effective_output_aspect = (output_aspect or "vertical").strip().lower()
     if effective_output_aspect not in {"vertical", "source"}:
@@ -846,22 +854,71 @@ def render_clips(
                 "cfr",
                 "-r",
                 str(fps),
-                "-c:v",
-                "libx264",
-                "-profile:v",
-                "high",
-                "-pix_fmt",
-                "yuv420p",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "18",
-                "-maxrate",
-                "10M",
-                "-bufsize",
-                "12M",
-                "-x264-params",
-                f"keyint={gop}:min-keyint={gop}:scenecut=0",
+            ]
+
+            if effective_hwaccel == "vaapi":
+                # VAAPI encode: keep complex filters on CPU, then upload to GPU for the final encode.
+                # This is a large speedup on Intel/AMD iGPUs while keeping feature parity.
+                import re
+
+                def _scale_rate(rate: str, factor: float) -> str:
+                    m = re.fullmatch(r"\s*([0-9]+(?:\.[0-9]+)?)\s*([kKmM])\s*", rate)
+                    if not m:
+                        return rate.strip()
+                    v = float(m.group(1))
+                    unit = m.group(2)
+                    out = max(1.0, v * float(factor))
+                    # Keep stable formatting (no unnecessary decimals).
+                    if abs(out - round(out)) < 1e-6:
+                        return f"{int(round(out))}{unit.upper()}"
+                    return f"{out:.1f}{unit.upper()}"
+
+                maxrate = _scale_rate(effective_vaapi_bitrate, 1.2)
+                bufsize = _scale_rate(effective_vaapi_bitrate, 2.0)
+
+                vf_vaapi = vf + ",format=nv12,hwupload"
+
+                ffmpeg_args += [
+                    "-vaapi_device",
+                    str(effective_vaapi_device),
+                    "-c:v",
+                    "h264_vaapi",
+                    "-profile:v",
+                    "high",
+                    "-rc_mode",
+                    "VBR",
+                    "-b:v",
+                    str(effective_vaapi_bitrate),
+                    "-maxrate",
+                    str(maxrate),
+                    "-bufsize",
+                    str(bufsize),
+                    "-g",
+                    str(gop),
+                ]
+
+                vf = vf_vaapi
+            else:
+                ffmpeg_args += [
+                    "-c:v",
+                    "libx264",
+                    "-profile:v",
+                    "high",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "18",
+                    "-maxrate",
+                    "10M",
+                    "-bufsize",
+                    "12M",
+                    "-x264-params",
+                    f"keyint={gop}:min-keyint={gop}:scenecut=0",
+                ]
+
+            ffmpeg_args += [
                 "-c:a",
                 "aac",
                 "-b:a",

@@ -17,7 +17,7 @@ class TextAwareCropConfig:
     out_w: int = 1080
     out_h: int = 1920
 
-    sample_fps: float = 5.0
+    sample_fps: float = 2.0
     padding_ratio: float = 0.18
 
     ocr_lang: str = "eng+fra+ara"
@@ -506,43 +506,42 @@ def render_text_aware_crop(
     tmp_src = output_dir / "clip_src.mp4"
     tmp_noaudio = output_dir / "video_noaudio.mp4"
 
+    build_src_cmd = [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-ss",
+        str(float(start_seconds)),
+        "-i",
+        str(source_video),
+        "-t",
+        str(duration),
+        "-vsync",
+        "cfr",
+        "-r",
+        str(int(target_fps)),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "18",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-ar",
+        "48000",
+        "-movflags",
+        "+faststart",
+        str(tmp_src),
+    ]
+
     # Step 1: build a CFR source clip to stabilize frame indexing.
     if not tmp_src.exists() or tmp_src.stat().st_size <= 0:
-        run(
-            [
-                "ffmpeg",
-                "-y",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-ss",
-                str(float(start_seconds)),
-                "-i",
-                str(source_video),
-                "-t",
-                str(duration),
-                "-vsync",
-                "cfr",
-                "-r",
-                str(int(target_fps)),
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "18",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "192k",
-                "-ar",
-                "48000",
-                "-movflags",
-                "+faststart",
-                str(tmp_src),
-            ],
-            logger=logger.bind(step="text_aware_crop_build_src"),
-        )
+        run(build_src_cmd, logger=logger.bind(step="text_aware_crop_build_src"))
 
     # Step 2: analyze sampled frames.
     try:
@@ -558,7 +557,25 @@ def render_text_aware_crop(
 
     if frame_w <= 0 or frame_h <= 0 or frame_count <= 0:
         cap.release()
-        raise RuntimeError("failed_to_read_video_metadata")
+
+        # We've seen resume-safe tmp clips get corrupted (e.g. incomplete moov atom).
+        # Best-effort recovery: delete and rebuild once.
+        try:
+            tmp_src.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        run(build_src_cmd, logger=logger.bind(step="text_aware_crop_rebuild_src"))
+
+        cap = cv2.VideoCapture(str(tmp_src))
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or float(target_fps) or 30.0)
+        frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+
+        if frame_w <= 0 or frame_h <= 0 or frame_count <= 0:
+            cap.release()
+            raise RuntimeError("failed_to_read_video_metadata")
 
     sample_step = max(1, int(round(float(fps) / max(0.1, float(cfg.sample_fps)))))
 

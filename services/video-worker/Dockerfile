@@ -10,6 +10,10 @@ RUN apt-get update \
         gcc g++ \
         libglib2.0-0 \
         libgl1 \
+        libva2 \
+        vainfo \
+        mesa-va-drivers \
+        i965-va-driver \
         fonts-dejavu-core \
         fonts-noto-core \
         fonts-noto-color-emoji \

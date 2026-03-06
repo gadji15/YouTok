@@ -71,7 +71,7 @@ class RenderRequest(BaseModel):
     subtitles_enabled: bool = True
     subtitle_template: str = "default"
     subtitle_max_words_per_line: int = Field(6, ge=1, le=12)
-    subtitle_max_chars_per_line: int = Field(36, ge=10, le=80)
+    subtitle_max_chars_per_line: int = Field(42, ge=10, le=80)
     subtitle_clip_realign_enabled: bool = False
 
     output_aspect: str = "vertical"
@@ -81,9 +81,14 @@ class RenderRequest(BaseModel):
     visual_enhance_enabled: bool = True
     ui_safe_ymin: float = 0.78
 
+    # FFmpeg hardware acceleration (Part 1)
+    ffmpeg_hwaccel: str = ""
+    vaapi_device: str = "/dev/dri/renderD128"
+    vaapi_bitrate: str = "5M"
+
     # Text-aware crop (Option A MVP)
     text_aware_crop_enabled: bool = False
-    text_aware_crop_sample_fps: float = Field(5.0, ge=0.5, le=12.0)
+    text_aware_crop_sample_fps: float = Field(2.0, ge=0.5, le=12.0)
     text_aware_crop_padding_ratio: float = Field(0.18, ge=0.0, le=0.6)
     text_aware_crop_ocr_lang: str = "eng+fra+ara"
     text_aware_crop_ocr_conf_threshold: float = Field(60.0, ge=0.0, le=100.0)
@@ -154,6 +159,10 @@ def render(req: RenderRequest) -> dict[str, Any]:
             else None
         )
 
+        ffmpeg_hwaccel = (req.ffmpeg_hwaccel or settings.ffmpeg_hwaccel).strip().lower()
+        vaapi_device = (req.vaapi_device or settings.vaapi_device).strip() or "/dev/dri/renderD128"
+        vaapi_bitrate = (req.vaapi_bitrate or settings.vaapi_bitrate).strip() or "5M"
+
         rendered = render_clips(
             source_video=source_video,
             transcript_segments=transcript,
@@ -172,6 +181,9 @@ def render(req: RenderRequest) -> dict[str, Any]:
             visual_enhance_enabled=req.visual_enhance_enabled,
             word_timings=words,
             ui_safe_ymin=req.ui_safe_ymin,
+            ffmpeg_hwaccel=ffmpeg_hwaccel,
+            vaapi_device=vaapi_device,
+            vaapi_bitrate=vaapi_bitrate,
             text_aware_crop_enabled=req.text_aware_crop_enabled,
             text_aware_crop_sample_fps=req.text_aware_crop_sample_fps,
             text_aware_crop_padding_ratio=req.text_aware_crop_padding_ratio,

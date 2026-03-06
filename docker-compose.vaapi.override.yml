@@ -1,0 +1,16 @@
+services:
+  video-worker-api:
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      VIDEO_WORKER_FFMPEG_HWACCEL: "vaapi"
+  clip-service:
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      VIDEO_WORKER_FFMPEG_HWACCEL: "vaapi"
+  video-worker-worker:
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      VIDEO_WORKER_FFMPEG_HWACCEL: "vaapi"

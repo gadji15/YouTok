@@ -30,18 +30,23 @@ Common:
 - `VIDEO_WORKER_SUBTITLES_ENABLED` (default: `true`)
 - `VIDEO_WORKER_SUBTITLE_TEMPLATE` (default: `modern_karaoke`; one of `default`, `modern`, `karaoke`, `modern_karaoke`, `cinematic`, `cinematic_karaoke`, `storytelling`, `podcast`, `motivation`)
 - `VIDEO_WORKER_SUBTITLE_MAX_WORDS_PER_LINE` (default: `6`)
-- `VIDEO_WORKER_SUBTITLE_MAX_CHARS_PER_LINE` (default: `36`)
+- `VIDEO_WORKER_SUBTITLE_MAX_CHARS_PER_LINE` (default: `42`)
 - `VIDEO_WORKER_SUBTITLE_CLIP_REALIGN_ENABLED` (default: `false`; enables slow per-clip word re-alignment for tighter timings)
 - `VIDEO_WORKER_TITLE_PROVIDER` (default: `heuristic`; one of `heuristic`, `openai`)
-- `VIDEO_WORKER_OPENAI_API_KEY` (default: empty; required when `TITLE_PROVIDER=openai`)
 - `VIDEO_WORKER_OPENAI_MODEL` (default: `gpt-4.1-mini`)
 - `VIDEO_WORKER_OPENAI_BASE_URL` (default: `https://api.openai.com/v1`)
 - `VIDEO_WORKER_TARGET_FPS` (default: `30`)
 
+GPU encode (VAAPI; optional):
+
+- `VIDEO_WORKER_FFMPEG_HWACCEL` (default: empty; set to `vaapi` to enable GPU encoding)
+- `VIDEO_WORKER_VAAPI_DEVICE` (default: `/dev/dri/renderD128`)
+- `VIDEO_WORKER_VAAPI_BITRATE` (default: `5M`)
+
 Text-aware dynamic crop (Option A MVP; requires tesseract + OCR deps):
 
 - `VIDEO_WORKER_TEXT_AWARE_CROP_ENABLED` (default: `false`; only affects `output_aspect=vertical`)
-- `VIDEO_WORKER_TEXT_AWARE_CROP_SAMPLE_FPS` (default: `5.0`)
+- `VIDEO_WORKER_TEXT_AWARE_CROP_SAMPLE_FPS` (default: `2.0`)
 - `VIDEO_WORKER_TEXT_AWARE_CROP_PADDING_RATIO` (default: `0.18`)
 - `VIDEO_WORKER_TEXT_AWARE_CROP_OCR_LANG` (default: `eng+fra+ara`)
 - `VIDEO_WORKER_TEXT_AWARE_CROP_OCR_CONF_THRESHOLD` (default: `60.0`)
