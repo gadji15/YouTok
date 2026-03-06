@@ -31,6 +31,7 @@ from .pipeline.word_alignment import (
 from .redis_conn import get_redis
 from .storage import get_s3_config, s3_enabled, upload_file_to_s3
 from .utils.errors import format_exception_short
+from .utils.ffprobe import probe_video
 from .utils.files import atomic_write_text
 from .utils.retry import retry
 
