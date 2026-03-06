@@ -4,34 +4,28 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+import arabic_reshaper
+from bidi.algorithm import get_display
 from PIL import ImageFont
 
-
-_RTL_RE = re.compile(r"[\u0590-\u08FF]")
 _ASS_TAG_RE = re.compile(r"\{[^}]*\}")
+_RTL_RE = re.compile(r"[\u0590-\u08FF]")
+
+
+def strip_ass_tags(text: str) -> str:
+    return _ASS_TAG_RE.sub("", text)
 
 
 def contains_rtl(text: str) -> bool:
     return _RTL_RE.search(text) is not None
 
 
-def strip_ass_tags(text: str) -> str:
-    # Remove ASS override blocks like {\pos(...)} or {\k20}.
-    return _ASS_TAG_RE.sub("", text)
-
-
-def _shape_rtl(text: str) -> str:
-    from arabic_reshaper import reshape
-    from bidi.algorithm import get_display
-
-    reshaped = reshape(text)
-    return get_display(reshaped)
-
-
 def prepare_text_for_ass(text: str, *, rtl: bool) -> str:
     if not rtl:
         return text
-    return _shape_rtl(text)
+
+    reshaped = arabic_reshaper.reshape(text)
+    return get_display(reshaped)
 
 
 def _font_assets_dir() -> Path:
@@ -47,7 +41,7 @@ def _first_existing(paths: list[Path]) -> Path | None:
 
 
 @lru_cache(maxsize=1)
-def resolve_font_path(prefer_arabic: bool = False) -> Path | None:
+def resolve_font_path(*, prefer_arabic: bool = False) -> Path | None:
     """Resolve a TrueType font file.
 
     Priority:
@@ -96,6 +90,7 @@ def resolve_font_path(prefer_arabic: bool = False) -> Path | None:
     for root in [Path("/usr/share/fonts"), Path("/usr/local/share/fonts")]:
         if not root.exists():
             continue
+
         try:
             for p in root.rglob("*.ttf"):
                 if p.name.lower() in want:
@@ -121,7 +116,7 @@ def measure_text_width_px(*, text: str, font_path: Path | None, font_size: int, 
         return 0
 
     if rtl:
-        text = _shape_rtl(text)
+        text = prepare_text_for_ass(text, rtl=True)
 
     font = _load_font(str(font_path) if font_path is not None else None, int(font_size))
 
