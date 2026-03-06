@@ -14,6 +14,22 @@ class ClipServiceSettings(BaseSettings):
         description="Shared storage root (contains projects/, clips/, transcripts/, subtitles/, exports/)",
     )
 
+    # FFmpeg hardware acceleration (Part 1)
+    ffmpeg_hwaccel: str = Field(
+        "",
+        description="Hardware acceleration mode for FFmpeg encoding (supported: '', 'vaapi')",
+    )
+
+    vaapi_device: str = Field(
+        "/dev/dri/renderD128",
+        description="VAAPI device path (usually /dev/dri/renderD128)",
+    )
+
+    vaapi_bitrate: str = Field(
+        "5M",
+        description="Target video bitrate when using VAAPI (e.g. 5M)",
+    )
+
     quality_gate_enabled: bool = Field(
         False,
         description="If true, measure face/UI overlap and attempt alternate placements",

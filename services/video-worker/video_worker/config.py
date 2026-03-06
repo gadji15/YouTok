@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     )
 
     subtitle_max_chars_per_line: int = Field(
-        36,
+        42,
         ge=10,
         le=80,
         description="Max characters per subtitle line (Part 4: keep short for mobile)",
@@ -164,6 +164,24 @@ class Settings(BaseSettings):
 
     target_fps: int = Field(30, ge=1, le=60)
 
+    # FFmpeg hardware acceleration (Part 1: GPU acceleration engine)
+    # Note: we currently accelerate the final encode step (and optionally some conversions)
+    # while keeping complex filters (ASS subtitles, vidstab) on CPU.
+    ffmpeg_hwaccel: str = Field(
+        "",
+        description="Hardware acceleration mode for FFmpeg encoding (supported: '', 'vaapi')",
+    )
+
+    vaapi_device: str = Field(
+        "/dev/dri/renderD128",
+        description="VAAPI device path (usually /dev/dri/renderD128)",
+    )
+
+    vaapi_bitrate: str = Field(
+        "5M",
+        description="Target video bitrate when using VAAPI (e.g. 5M)",
+    )
+
     # Text-aware dynamic crop (Option A MVP)
     text_aware_crop_enabled: bool = Field(
         False,
@@ -171,7 +189,7 @@ class Settings(BaseSettings):
     )
 
     text_aware_crop_sample_fps: float = Field(
-        5.0,
+        2.0,
         ge=0.5,
         le=12.0,
         description="Sample FPS for OCR detection (higher = slower)",
