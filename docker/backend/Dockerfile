@@ -15,15 +15,28 @@ RUN apt-get update \
         libzip-dev \
         libsqlite3-dev \
         libcurl4-openssl-dev \
+        libpq-dev \
+        autoconf \
+        g++ \
+        make \
+        pkg-config \
     && docker-php-ext-install \
         bcmath \
         intl \
         mbstring \
         pcntl \
         pdo_mysql \
+        pdo_pgsql \
         pdo_sqlite \
         curl \
         zip \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && apt-get purge -y --auto-remove \
+        autoconf \
+        g++ \
+        make \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer

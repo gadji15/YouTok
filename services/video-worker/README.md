@@ -51,6 +51,18 @@ API hardening (optional):
 - `VIDEO_WORKER_API_KEY` (default: empty). If set, `POST /jobs` requires `Authorization: Bearer <key>`.
 - `VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST` (default: empty). If set, rejects jobs where `callback_url.host` is not in the comma-separated allowlist.
 
+Artifact storage (S3 / R2 / MinIO):
+
+If `VIDEO_WORKER_S3_BUCKET` is set, the worker uploads completed artifacts to object storage and returns public URLs in the callback payload.
+
+- `VIDEO_WORKER_S3_BUCKET` (required to enable)
+- `VIDEO_WORKER_S3_PREFIX` (default: `hikma`)
+- `VIDEO_WORKER_S3_REGION` (optional)
+- `VIDEO_WORKER_S3_ENDPOINT_URL` (optional; for MinIO/R2)
+- `VIDEO_WORKER_S3_ACCESS_KEY_ID` / `VIDEO_WORKER_S3_SECRET_ACCESS_KEY`
+- `VIDEO_WORKER_S3_PUBLIC_BASE_URL` (optional; if set, URLs are `<base>/<key>`)
+- `VIDEO_WORKER_S3_CLEANUP_LOCAL` (default: `false`)
+
 ## Run locally
 
 On Debian/Ubuntu with Python 3.12+, you may see `error: externally-managed-environment` (PEP 668) if you try to `pip install` system-wide. Use a virtualenv.

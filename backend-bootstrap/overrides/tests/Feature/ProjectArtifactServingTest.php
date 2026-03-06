@@ -93,6 +93,29 @@ class ProjectArtifactServingTest extends TestCase
             ->assertOk();
     }
 
+    public function test_admin_can_download_project_artifacts_from_remote_url(): void
+    {
+        $email = 'admin@example.com';
+        config()->set('admin.emails', [$email]);
+
+        /** @var User $user */
+        $user = User::factory()->create([
+            'email' => $email,
+            'email_verified_at' => now(),
+        ]);
+
+        $project = Project::query()->create([
+            'name' => 'Test',
+            'youtube_url' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+            'status' => ProjectStatus::completed,
+            'transcript_json_path' => 'https://cdn.example.com/transcript.json',
+        ]);
+
+        $this->actingAs($user)
+            ->get('/projects/'.(string) $project->id.'/artifacts/transcript.json')
+            ->assertRedirect('https://cdn.example.com/transcript.json');
+    }
+
     public function test_admin_cannot_download_project_artifacts_outside_shared_storage_root(): void
     {
         $email = 'admin@example.com';

@@ -12,6 +12,7 @@ class S3Config:
     prefix: str
     region: str
     endpoint_url: str
+    public_base_url: str
     access_key_id: str
     secret_access_key: str
 
@@ -35,6 +36,7 @@ def get_s3_config() -> S3Config | None:
         prefix=s.s3_prefix,
         region=s.s3_region,
         endpoint_url=s.s3_endpoint_url,
+        public_base_url=s.s3_public_base_url,
         access_key_id=s.s3_access_key_id,
         secret_access_key=s.s3_secret_access_key,
     )
@@ -60,7 +62,7 @@ def upload_file_to_s3(*, local_path: Path, key: str) -> str:
     try:
         import boto3
     except ModuleNotFoundError as e:
-        raise RuntimeError("boto3 is required for S3 uploads; install requirements-s3.txt") from e
+        raise RuntimeError("boto3 is required for S3 uploads") from e
 
     session = boto3.session.Session(
         aws_access_key_id=cfg.access_key_id or None,
@@ -78,6 +80,9 @@ def upload_file_to_s3(*, local_path: Path, key: str) -> str:
         Bucket=cfg.bucket,
         Key=key,
     )
+
+    if cfg.public_base_url:
+        return f"{cfg.public_base_url.rstrip('/')}/{key}"
 
     # Basic URL form (provider dependent). For AWS, this is typically valid.
     if cfg.endpoint_url:

@@ -112,10 +112,12 @@ services:
     depends_on:
       backend_init:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     # Use Laravel's built-in server but disable auto-reload.
     # Auto-reload can restart the server when bind-mounted files change, causing
     # transient 404s during worker callbacks.
-    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000", "--no-reload"]
+    command: ["/bin/bash", "-lc", "unset QUEUE_CONNECTION SESSION_DRIVER CACHE_STORE REDIS_CLIENT REDIS_HOST REDIS_PORT; php artisan serve --host=0.0.0.0 --port=8000 --no-reload"]
 
   queue:
     build:
@@ -155,7 +157,26 @@ services:
     depends_on:
       backend_init:
         condition: service_completed_successfully
-    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=180"]
+      redis:
+        condition: service_healthy
+    command: ["/bin/bash", "-lc", "unset QUEUE_CONNECTION SESSION_DRIVER CACHE_STORE REDIS_CLIENT REDIS_HOST REDIS_PORT; php artisan queue:work --tries=3 --timeout=180"]
+
+  scheduler:
+    build:
+      context: ./docker/backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+      - video_worker_shared:/shared
+    depends_on:
+      backend_init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    command: ["/bin/bash", "-lc", "unset QUEUE_CONNECTION SESSION_DRIVER CACHE_STORE REDIS_CLIENT REDIS_HOST REDIS_PORT; php artisan schedule:work"]
 
   db:
     image: mysql:8.0
@@ -188,6 +209,14 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      VIDEO_WORKER_S3_BUCKET: ${VIDEO_WORKER_S3_BUCKET:-}
+      VIDEO_WORKER_S3_PREFIX: ${VIDEO_WORKER_S3_PREFIX:-hikma}
+      VIDEO_WORKER_S3_REGION: ${VIDEO_WORKER_S3_REGION:-}
+      VIDEO_WORKER_S3_ENDPOINT_URL: ${VIDEO_WORKER_S3_ENDPOINT_URL:-}
+      VIDEO_WORKER_S3_ACCESS_KEY_ID: ${VIDEO_WORKER_S3_ACCESS_KEY_ID:-}
+      VIDEO_WORKER_S3_SECRET_ACCESS_KEY: ${VIDEO_WORKER_S3_SECRET_ACCESS_KEY:-}
+      VIDEO_WORKER_S3_PUBLIC_BASE_URL: ${VIDEO_WORKER_S3_PUBLIC_BASE_URL:-}
+      VIDEO_WORKER_S3_CLEANUP_LOCAL: ${VIDEO_WORKER_S3_CLEANUP_LOCAL:-false}
       VIDEO_WORKER_REDIS_URL: ${VIDEO_WORKER_REDIS_URL:-redis://redis:6379/0}
       VIDEO_WORKER_QUEUE_NAME: ${VIDEO_WORKER_QUEUE_NAME:-video-worker}
       VIDEO_WORKER_STORAGE_PATH: ${VIDEO_WORKER_STORAGE_PATH:-/shared/storage}
@@ -215,6 +244,14 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      VIDEO_WORKER_S3_BUCKET: ${VIDEO_WORKER_S3_BUCKET:-}
+      VIDEO_WORKER_S3_PREFIX: ${VIDEO_WORKER_S3_PREFIX:-hikma}
+      VIDEO_WORKER_S3_REGION: ${VIDEO_WORKER_S3_REGION:-}
+      VIDEO_WORKER_S3_ENDPOINT_URL: ${VIDEO_WORKER_S3_ENDPOINT_URL:-}
+      VIDEO_WORKER_S3_ACCESS_KEY_ID: ${VIDEO_WORKER_S3_ACCESS_KEY_ID:-}
+      VIDEO_WORKER_S3_SECRET_ACCESS_KEY: ${VIDEO_WORKER_S3_SECRET_ACCESS_KEY:-}
+      VIDEO_WORKER_S3_PUBLIC_BASE_URL: ${VIDEO_WORKER_S3_PUBLIC_BASE_URL:-}
+      VIDEO_WORKER_S3_CLEANUP_LOCAL: ${VIDEO_WORKER_S3_CLEANUP_LOCAL:-false}
       VIDEO_WORKER_REDIS_URL: ${VIDEO_WORKER_REDIS_URL:-redis://redis:6379/0}
       VIDEO_WORKER_STORAGE_PATH: ${VIDEO_WORKER_STORAGE_PATH:-/shared/storage}
       VIDEO_WORKER_TARGET_FPS: ${VIDEO_WORKER_TARGET_FPS:-30}
@@ -244,6 +281,14 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      VIDEO_WORKER_S3_BUCKET: ${VIDEO_WORKER_S3_BUCKET:-}
+      VIDEO_WORKER_S3_PREFIX: ${VIDEO_WORKER_S3_PREFIX:-hikma}
+      VIDEO_WORKER_S3_REGION: ${VIDEO_WORKER_S3_REGION:-}
+      VIDEO_WORKER_S3_ENDPOINT_URL: ${VIDEO_WORKER_S3_ENDPOINT_URL:-}
+      VIDEO_WORKER_S3_ACCESS_KEY_ID: ${VIDEO_WORKER_S3_ACCESS_KEY_ID:-}
+      VIDEO_WORKER_S3_SECRET_ACCESS_KEY: ${VIDEO_WORKER_S3_SECRET_ACCESS_KEY:-}
+      VIDEO_WORKER_S3_PUBLIC_BASE_URL: ${VIDEO_WORKER_S3_PUBLIC_BASE_URL:-}
+      VIDEO_WORKER_S3_CLEANUP_LOCAL: ${VIDEO_WORKER_S3_CLEANUP_LOCAL:-false}
       VIDEO_WORKER_REDIS_URL: ${VIDEO_WORKER_REDIS_URL:-redis://redis:6379/0}
       VIDEO_WORKER_QUEUE_NAME: ${VIDEO_WORKER_QUEUE_NAME:-video-worker}
       VIDEO_WORKER_STORAGE_PATH: ${VIDEO_WORKER_STORAGE_PATH:-/shared/storage}
@@ -271,11 +316,42 @@ services:
         condition: service_healthy
     command: ["python", "-m", "video_worker.worker"]
 
+  tiktok-bot:
+    profiles: ["tiktok-bot"]
+    build:
+      context: ./services/tiktok-bot
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      PUBLISH_MODE: ${PUBLISH_MODE:-stub}
+      # Shared secret used by backend + tiktok-bot (header X-Internal-Secret)
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
+      NODE_ENV: production
+
+      # Persisted session cookies/state
+      COOKIE_DIR: /app/storage/cookies
+
+      # Clips can be local (inside /shared) or remote URLs (S3/R2).
+      PUBLISH_CLIP_ROOT: /shared
+
+      PUBLISH_REDIS_URL: ${PUBLISH_REDIS_URL:-redis://redis:6379/1}
+      PUBLISH_ARTIFACT_DIR: /app/storage/artifacts
+    volumes:
+      - tiktok_bot_storage:/app/storage
+      - video_worker_shared:/shared:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3001:3000"
+
 volumes:
   db_data:
   video_worker_shared:
   video_worker_torch_cache:
   video_worker_whisper_cache:
+  tiktok_bot_storage:
   caddy_data:
   caddy_config:
 

@@ -147,9 +147,31 @@ upsert_env_kv() {
   DB_USERNAME_EFFECTIVE="${DB_USERNAME:-backend}"
   DB_PASSWORD_EFFECTIVE="${DB_PASSWORD:-backend}"
 
+  if [ "${DB_CONNECTION_EFFECTIVE}" = "pgsql" ] && { [ -z "${DB_PORT:-}" ] || [ "${DB_PORT_EFFECTIVE}" = "3306" ]; }; then
+    DB_PORT_EFFECTIVE="5432"
+  fi
+
+  REDIS_CLIENT_EFFECTIVE="
+  REDIS_HOST_EFFECTIVE="${REDIS_HOST:-redis}"
+  REDIS_PORT_EFFECTIVE="${REDIS_PORT:-6379}"
+
   QUEUE_CONNECTION_EFFECTIVE="${QUEUE_CONNECTION:-database}"
   SESSION_DRIVER_EFFECTIVE="${SESSION_DRIVER:-file}"
   CACHE_STORE_EFFECTIVE="${CACHE_STORE:-file}"
+
+  if is_production_env; then
+    if [ -z "${QUEUE_CONNECTION:-}" ] || [ "${QUEUE_CONNECTION}" = "database" ]; then
+      QUEUE_CONNECTION_EFFECTIVE="redis"
+    fi
+
+    if [ -z "${SESSION_DRIVER:-}" ] || [ "${SESSION_DRIVER}" = "file" ]; then
+      SESSION_DRIVER_EFFECTIVE="redis"
+    fi
+
+    if [ -z "${CACHE_STORE:-}" ] || [ "${CACHE_STORE}" = "file" ]; then
+      CACHE_STORE_EFFECTIVE="redis"
+    fi
+  fi
 
   upsert_env_kv APP_ENV "$APP_ENV_EFFECTIVE"
   upsert_env_kv APP_DEBUG "$APP_DEBUG_EFFECTIVE"
@@ -162,6 +184,10 @@ upsert_env_kv() {
   upsert_env_kv DB_USERNAME "$DB_USERNAME_EFFECTIVE"
   upsert_env_kv DB_PASSWORD "$DB_PASSWORD_EFFECTIVE"
 
+  upsert_env_kv REDIS_CLIENT "$REDIS_CLIENT_EFFECTIVE"
+  upsert_env_kv REDIS_HOST "$REDIS_HOST_EFFECTIVE"
+  upsert_env_kv REDIS_PORT "$REDIS_PORT_EFFECTIVE"
+
   upsert_env_kv QUEUE_CONNECTION "$QUEUE_CONNECTION_EFFECTIVE"
   upsert_env_kv SESSION_DRIVER "$SESSION_DRIVER_EFFECTIVE"
   upsert_env_kv CACHE_STORE "$CACHE_STORE_EFFECTIVE"
@@ -172,6 +198,10 @@ upsert_env_kv() {
   export DB_DATABASE="$DB_DATABASE_EFFECTIVE"
   export DB_USERNAME="$DB_USERNAME_EFFECTIVE"
   export DB_PASSWORD="$DB_PASSWORD_EFFECTIVE"
+
+  export REDIS_CLIENT="$REDIS_CLIENT_EFFECTIVE"
+  export REDIS_HOST="$REDIS_HOST_EFFECTIVE"
+  export REDIS_PORT="$REDIS_PORT_EFFECTIVE"
 
   export QUEUE_CONNECTION="$QUEUE_CONNECTION_EFFECTIVE"
   export SESSION_DRIVER="$SESSION_DRIVER_EFFECTIVE"
@@ -211,6 +241,9 @@ if [ -f .env ]; then
   upsert_env_kv DB_DATABASE "${DB_DATABASE_EFFECTIVE:-backend}" .env.testing
   upsert_env_kv DB_USERNAME "${DB_USERNAME_EFFECTIVE:-backend}" .env.testing
   upsert_env_kv DB_PASSWORD "${DB_PASSWORD_EFFECTIVE:-backend}" .env.testing
+  upsert_env_kv REDIS_CLIENT "${REDIS_CLIENT_EFFECTIVE:-phpredis}" .env.testing
+  upsert_env_kv REDIS_HOST "${REDIS_HOST_EFFECTIVE:-redis}" .env.testing
+  upsert_env_kv REDIS_PORT "${REDIS_PORT_EFFECTIVE:-6379}" .env.testing
   fix_env_perms
 fi
 
@@ -280,7 +313,7 @@ upsert_env_kv SHARED_STORAGE_ROOT "${SHARED_STORAGE_ROOT:-/shared}"
 
 fix_env_perms
 
-# Wait for MySQL
+# Wait for DB
 if [ "${DB_CONNECTION:-}" = "mysql" ]; then
   echo "[backend_init] waiting for MySQL" >&2
   php -r '
@@ -298,6 +331,31 @@ if [ "${DB_CONNECTION:-}" = "mysql" ]; then
       } catch (Throwable $e) {
         if (time() - $started > 120) {
           fwrite(STDERR, "mysql_timeout: {$e->getMessage()}\n");
+          exit(1);
+        }
+        sleep(2);
+      }
+    }
+  ';
+fi
+
+if [ "${DB_CONNECTION:-}" = "pgsql" ]; then
+  echo "[backend_init] waiting for Postgres" >&2
+  php -r '
+    $host = getenv("DB_HOST");
+    $port = getenv("DB_PORT") ?: "5432";
+    $db = getenv("DB_DATABASE");
+    $user = getenv("DB_USERNAME");
+    $pass = getenv("DB_PASSWORD");
+    $dsn = "pgsql:host={$host};port={$port};dbname={$db}";
+    $started = time();
+    while (true) {
+      try {
+        new PDO($dsn, $user, $pass);
+        break;
+      } catch (Throwable $e) {
+        if (time() - $started > 120) {
+          fwrite(STDERR, "pgsql_timeout: {$e->getMessage()}\n");
           exit(1);
         }
         sleep(2);

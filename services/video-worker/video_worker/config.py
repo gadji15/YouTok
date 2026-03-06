@@ -39,6 +39,17 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = Field("", description="Custom S3 endpoint URL (MinIO/Wasabi/etc)")
     s3_access_key_id: str = Field("", description="S3 access key id")
     s3_secret_access_key: str = Field("", description="S3 secret access key")
+    s3_public_base_url: str = Field(
+        "",
+        description=(
+            "Optional public base URL for downloads (e.g. https://cdn.example.com). "
+            "If set, uploaded keys are exposed as <base>/<key>."
+        ),
+    )
+    s3_cleanup_local: bool = Field(
+        False,
+        description="If true, delete local artifacts after a successful S3 upload",
+    )
 
     whisper_model: str = Field(
         "base",

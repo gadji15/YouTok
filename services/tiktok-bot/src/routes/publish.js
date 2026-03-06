@@ -28,18 +28,24 @@ function createPublishRouter({ queues }) {
 
     const mode = (process.env.PUBLISH_MODE || 'stub').toLowerCase();
 
-    const root = path.resolve(process.env.PUBLISH_CLIP_ROOT || '/shared');
-    const resolvedClipPath = path.resolve(clipPath);
+    const isRemoteUrl = /^https?:\/\//i.test(clipPath);
 
-    const rel = path.relative(root, resolvedClipPath);
-    if (rel.startsWith('..') || path.isAbsolute(rel)) {
-      return res.status(400).json({ error: 'clip_path_outside_root' });
-    }
+    let resolvedClipPath = clipPath;
 
-    try {
-      await fs.access(resolvedClipPath);
-    } catch {
-      return res.status(400).json({ error: 'clip_path_not_found' });
+    if (!isRemoteUrl) {
+      const root = path.resolve(process.env.PUBLISH_CLIP_ROOT || '/shared');
+      resolvedClipPath = path.resolve(clipPath);
+
+      const rel = path.relative(root, resolvedClipPath);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) {
+        return res.status(400).json({ error: 'clip_path_outside_root' });
+      }
+
+      try {
+        await fs.access(resolvedClipPath);
+      } catch {
+        return res.status(400).json({ error: 'clip_path_not_found' });
+      }
     }
 
     const job = await queues.enqueuePublish({

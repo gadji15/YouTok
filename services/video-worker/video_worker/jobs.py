@@ -29,14 +29,64 @@ from .pipeline.word_alignment import (
     write_words_json,
 )
 from .redis_conn import get_redis
+from .storage import get_s3_config, s3_enabled, upload_file_to_s3
 from .utils.errors import format_exception_short
-from .utils.ffprobe import probe_video
 from .utils.files import atomic_write_text
 from .utils.retry import retry
 
 
 class JobCancelledError(RuntimeError):
     pass
+
+
+def _s3_key_for_local_path(*, local_path: Path, storage_root: Path, key_prefix: str) -> str:
+    try:
+        rel = local_path.relative_to(storage_root)
+        rel_str = rel.as_posix().lstrip("/")
+    except Exception:
+        rel_str = local_path.name
+
+    prefix = key_prefix.strip("/")
+    return f"{prefix}/{rel_str}" if prefix else rel_str
+
+
+def _maybe_upload_path_to_s3(
+    *,
+    path_str: str | None,
+    storage_root: Path,
+    key_prefix: str,
+    cleanup_local: bool,
+    logger: structlog.BoundLogger,
+) -> str | None:
+    if not path_str:
+        return None
+
+    raw = str(path_str).strip()
+    if raw == "":
+        return None
+
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+
+    p = Path(raw)
+    if not p.exists() or not p.is_file():
+        return raw
+
+    key = _s3_key_for_local_path(local_path=p, storage_root=storage_root, key_prefix=key_prefix)
+
+    try:
+        url = upload_file_to_s3(local_path=p, key=key)
+    except Exception:
+        logger.exception("s3.upload_failed", local_path=str(p), key=key)
+        return raw
+
+    if cleanup_local:
+        try:
+            p.unlink(missing_ok=True)
+        except Exception:
+            logger.exception("s3.cleanup_failed", local_path=str(p))
+
+    return url
 
 
 def _load_title_candidates_json(path: Path) -> dict[str, dict] | None:
@@ -903,6 +953,11 @@ def process_job(
                 logger.exception("clip.quality_summary_read_failed")
                 return None
 
+        s3_cfg = get_s3_config() if s3_enabled() else None
+        storage_root = Path(settings.storage_path)
+        key_prefix = s3_cfg.prefix if s3_cfg is not None else ""
+        cleanup_local = bool(settings.s3_cleanup_local)
+
         clip_artifacts: list[ClipArtifact] = []
         for c in rendered:
             raise_if_cancelled()
@@ -915,22 +970,119 @@ def process_job(
             if q is not None:
                 c = {**c, "quality_summary": q}
 
+            if s3_cfg is not None:
+                c = {
+                    **c,
+                    "video_path": _maybe_upload_path_to_s3(
+                        path_str=c.get("video_path"),
+                        storage_root=storage_root,
+                        key_prefix=key_prefix,
+                        cleanup_local=cleanup_local,
+                        logger=logger,
+                    ),
+                    "subtitles_ass_path": _maybe_upload_path_to_s3(
+                        path_str=c.get("subtitles_ass_path"),
+                        storage_root=storage_root,
+                        key_prefix=key_prefix,
+                        cleanup_local=cleanup_local,
+                        logger=logger,
+                    ),
+                    "subtitles_srt_path": _maybe_upload_path_to_s3(
+                        path_str=c.get("subtitles_srt_path"),
+                        storage_root=storage_root,
+                        key_prefix=key_prefix,
+                        cleanup_local=cleanup_local,
+                        logger=logger,
+                    ),
+                }
+
             clip_artifacts.append(ClipArtifact(**c))
 
+        source_video_path = str(ctx.source_video_path)
+        audio_path = str(ctx.audio_path)
+        transcript_json_path = str(ctx.transcript_json_path)
+        subtitles_srt_path = str(ctx.subtitles_srt_path)
+        clips_json_path = str(ctx.clips_json_path)
+        words_json_path = str(ctx.words_json_path)
+        segments_json_path = str(ctx.segments_json_path)
+        source_metadata_json_path = str(ctx.source_metadata_json_path) if ctx.source_metadata_json_path.exists() else None
+        source_thumbnail_path = str(ctx.source_thumbnail_path) if ctx.source_thumbnail_path.exists() else None
+
+        if s3_cfg is not None:
+            source_video_path = _maybe_upload_path_to_s3(
+                path_str=source_video_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            audio_path = _maybe_upload_path_to_s3(
+                path_str=audio_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            transcript_json_path = _maybe_upload_path_to_s3(
+                path_str=transcript_json_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            subtitles_srt_path = _maybe_upload_path_to_s3(
+                path_str=subtitles_srt_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            clips_json_path = _maybe_upload_path_to_s3(
+                path_str=clips_json_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            words_json_path = _maybe_upload_path_to_s3(
+                path_str=words_json_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            segments_json_path = _maybe_upload_path_to_s3(
+                path_str=segments_json_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            source_metadata_json_path = _maybe_upload_path_to_s3(
+                path_str=source_metadata_json_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            source_thumbnail_path = _maybe_upload_path_to_s3(
+                path_str=source_thumbnail_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+
         artifacts = JobArtifacts(
-            source_video_path=str(ctx.source_video_path),
-            audio_path=str(ctx.audio_path),
-            transcript_json_path=str(ctx.transcript_json_path),
-            subtitles_srt_path=str(ctx.subtitles_srt_path),
-            clips_json_path=str(ctx.clips_json_path),
-            words_json_path=str(ctx.words_json_path),
-            segments_json_path=str(ctx.segments_json_path),
-            source_metadata_json_path=(
-                str(ctx.source_metadata_json_path) if ctx.source_metadata_json_path.exists() else None
-            ),
-            source_thumbnail_path=(
-                str(ctx.source_thumbnail_path) if ctx.source_thumbnail_path.exists() else None
-            ),
+            source_video_path=source_video_path,
+            audio_path=audio_path,
+            transcript_json_path=transcript_json_path,
+            subtitles_srt_path=subtitles_srt_path,
+            clips_json_path=clips_json_path,
+            words_json_path=words_json_path,
+            segments_json_path=segments_json_path,
+            source_metadata_json_path=source_metadata_json_path,
+            source_thumbnail_path=source_thumbnail_path,
             clips=clip_artifacts,
         )
 
