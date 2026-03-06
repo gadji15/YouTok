@@ -9,7 +9,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="VIDEO_WORKER_", extra="ignore")
 
-    redis_url: str = Field(..., description="Redis connection URL")
+    redis_url: str = Field(
+        "redis://redis:6379/0",
+        description="Redis connection URL",
+    )
     queue_name: str = Field("video-worker", description="RQ queue name")
 
     # Optional API key to protect POST /jobs.
