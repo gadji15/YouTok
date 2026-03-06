@@ -810,31 +810,46 @@ def process_job(
                     ),
                 }
 
-                with httpx.Client(timeout=60.0) as client:
-                    res = client.post(base + "/render", json=payload)
-                    try:
-                        res.raise_for_status()
-                    except httpx.HTTPStatusError:
-                        detail = None
+                # Rendering a batch of clips can take several minutes; use a long read timeout.
+                # Tie it to the RQ job timeout so we don't time out client-side first.
+                read_timeout = max(60.0, float(settings.rq_job_timeout_seconds) - 60.0)
+                timeout = httpx.Timeout(connect=10.0, read=read_timeout, write=30.0, pool=10.0)
+
+                try:
+                    with httpx.Client(timeout=timeout) as client:
+                        res = client.post(base + "/render", json=payload)
                         try:
-                            j = res.json()
-                            if isinstance(j, dict):
-                                detail = j.get("detail")
-                        except Exception:
+                            res.raise_for_status()
+                        except httpx.HTTPStatusError:
                             detail = None
+                            try:
+                                j = res.json()
+                                if isinstance(j, dict):
+                                    detail = j.get("detail")
+                            except Exception:
+                                detail = None
 
-                        logger.error(
-                            "clip_service.render_failed",
-                            status_code=res.status_code,
-                            content_type=res.headers.get("content-type"),
-                            response_detail=detail,
-                            response_text=(res.text or "")[:4000],
-                        )
-                        raise
+                            logger.error(
+                                "clip_service.render_failed",
+                                status_code=res.status_code,
+                                content_type=res.headers.get("content-type"),
+                                response_detail=detail,
+                                response_text=(res.text or "")[:4000],
+                            )
+                            raise
 
-                    data = res.json()
+                        data = res.json()
 
-                return data.get("clips") or []
+                    return data.get("clips") or []
+                except (httpx.RequestError, httpx.TimeoutException) as e:
+                    # Best-effort fallback: if clip-service is unavailable or too slow,
+                    # render in-process (resume-safe; will skip already-rendered clips).
+                    logger.warning(
+                        "clip_service.unavailable_fallback_local_render",
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        base_url=base,
+                    )
 
             return render_clips(
                 source_video=ctx.source_video_path,
