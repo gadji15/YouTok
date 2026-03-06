@@ -81,6 +81,17 @@ class RenderRequest(BaseModel):
     visual_enhance_enabled: bool = True
     ui_safe_ymin: float = 0.78
 
+    # Text-aware crop (Option A MVP)
+    text_aware_crop_enabled: bool = False
+    text_aware_crop_sample_fps: float = Field(5.0, ge=0.5, le=12.0)
+    text_aware_crop_padding_ratio: float = Field(0.18, ge=0.0, le=0.6)
+    text_aware_crop_ocr_lang: str = "eng+fra+ara"
+    text_aware_crop_ocr_conf_threshold: float = Field(60.0, ge=0.0, le=100.0)
+    text_aware_crop_min_zoom: float = Field(1.0, ge=1.0, le=4.0)
+    text_aware_crop_max_zoom: float = Field(1.9, ge=1.0, le=4.0)
+    text_aware_crop_reading_hold_sec: float = Field(0.8, ge=0.0, le=10.0)
+    text_aware_crop_debug_frames: bool = False
+
     # Part 8 — viral engine
     language: str | None = None
     viral_engine_enabled: bool = True
@@ -161,6 +172,15 @@ def render(req: RenderRequest) -> dict[str, Any]:
             visual_enhance_enabled=req.visual_enhance_enabled,
             word_timings=words,
             ui_safe_ymin=req.ui_safe_ymin,
+            text_aware_crop_enabled=req.text_aware_crop_enabled,
+            text_aware_crop_sample_fps=req.text_aware_crop_sample_fps,
+            text_aware_crop_padding_ratio=req.text_aware_crop_padding_ratio,
+            text_aware_crop_ocr_lang=req.text_aware_crop_ocr_lang,
+            text_aware_crop_ocr_conf_threshold=req.text_aware_crop_ocr_conf_threshold,
+            text_aware_crop_min_zoom=req.text_aware_crop_min_zoom,
+            text_aware_crop_max_zoom=req.text_aware_crop_max_zoom,
+            text_aware_crop_reading_hold_sec=req.text_aware_crop_reading_hold_sec,
+            text_aware_crop_debug_frames=req.text_aware_crop_debug_frames,
             quality_gate_enabled=settings.quality_gate_enabled,
             quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
             quality_gate_max_attempts=settings.quality_gate_max_attempts,

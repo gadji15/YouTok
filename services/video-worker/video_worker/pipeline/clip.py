@@ -154,6 +154,16 @@ def render_clips(
     quality_gate_face_overlap_p95_threshold: float = 0.05,
     quality_gate_max_attempts: int = 2,
     ui_safe_ymin: float = 0.78,
+    # Text-aware crop (Option A MVP)
+    text_aware_crop_enabled: bool = False,
+    text_aware_crop_sample_fps: float = 5.0,
+    text_aware_crop_padding_ratio: float = 0.18,
+    text_aware_crop_ocr_lang: str = "eng+fra+ara",
+    text_aware_crop_ocr_conf_threshold: float = 60.0,
+    text_aware_crop_min_zoom: float = 1.0,
+    text_aware_crop_max_zoom: float = 1.9,
+    text_aware_crop_reading_hold_sec: float = 0.8,
+    text_aware_crop_debug_frames: bool = False,
     # Part 8 — viral engine
     viral_engine_enabled: bool = False,
     viral_effect_style: str = "subtle",
@@ -548,9 +558,56 @@ def render_clips(
         if duration <= 0:
             continue
 
+        ffmpeg_source_video = source_video
+        ffmpeg_start_seconds = float(clip.start_seconds)
+
+        used_text_aware_crop = False
+
+        if (not is_source_aspect) and bool(text_aware_crop_enabled):
+            try:
+                from .text_aware_crop import TextAwareCropConfig, render_text_aware_crop
+
+                tac_dir = clip_dir / "text_aware_crop"
+                tac_out = tac_dir / "reframed.mp4"
+
+                render_text_aware_crop(
+                    source_video=source_video,
+                    start_seconds=float(clip.start_seconds),
+                    end_seconds=float(clip.end_seconds),
+                    output_video=tac_out,
+                    output_dir=tac_dir,
+                    cfg=TextAwareCropConfig(
+                        out_w=1080,
+                        out_h=1920,
+                        sample_fps=float(text_aware_crop_sample_fps),
+                        padding_ratio=float(text_aware_crop_padding_ratio),
+                        ocr_lang=str(text_aware_crop_ocr_lang or "eng+fra+ara"),
+                        ocr_conf_threshold=float(text_aware_crop_ocr_conf_threshold),
+                        min_zoom=float(text_aware_crop_min_zoom),
+                        max_zoom=float(text_aware_crop_max_zoom),
+                        reading_hold_sec=float(text_aware_crop_reading_hold_sec),
+                        debug_frames=bool(text_aware_crop_debug_frames),
+                    ),
+                    logger=logger.bind(clip_id=clip.clip_id),
+                    target_fps=int(fps),
+                )
+
+                if tac_out.exists() and tac_out.stat().st_size > 0:
+                    ffmpeg_source_video = tac_out
+                    ffmpeg_start_seconds = 0.0
+                    used_text_aware_crop = True
+            except Exception:
+                logger.exception("text_aware_crop.failed_fallback", clip_id=clip.clip_id)
+
         if is_source_aspect:
             vf_parts = [
                 # Ensure even dimensions for yuv420p without changing aspect.
+                "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                f"fps={fps}",
+            ]
+        elif used_text_aware_crop:
+            # Already 1080x1920. Keep filters minimal.
+            vf_parts = [
                 "scale=trunc(iw/2)*2:trunc(ih/2)*2",
                 f"fps={fps}",
             ]
@@ -652,9 +709,9 @@ def render_clips(
                     "-loglevel",
                     "error",
                     "-ss",
-                    str(clip.start_seconds),
+                    str(ffmpeg_start_seconds),
                     "-i",
-                    str(source_video),
+                    str(ffmpeg_source_video),
                     "-t",
                     str(duration),
                     "-vf",
@@ -752,9 +809,9 @@ def render_clips(
                 "-loglevel",
                 "error",
                 "-ss",
-                str(clip.start_seconds),
+                str(ffmpeg_start_seconds),
                 "-i",
-                str(source_video),
+                str(ffmpeg_source_video),
                 "-t",
                 str(duration),
             ]

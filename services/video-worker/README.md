@@ -37,6 +37,19 @@ Common:
 - `VIDEO_WORKER_OPENAI_MODEL` (default: `gpt-4.1-mini`)
 - `VIDEO_WORKER_OPENAI_BASE_URL` (default: `https://api.openai.com/v1`)
 - `VIDEO_WORKER_TARGET_FPS` (default: `30`)
+
+Text-aware dynamic crop (Option A MVP; requires tesseract + OCR deps):
+
+- `VIDEO_WORKER_TEXT_AWARE_CROP_ENABLED` (default: `false`; only affects `output_aspect=vertical`)
+- `VIDEO_WORKER_TEXT_AWARE_CROP_SAMPLE_FPS` (default: `5.0`)
+- `VIDEO_WORKER_TEXT_AWARE_CROP_PADDING_RATIO` (default: `0.18`)
+- `VIDEO_WORKER_TEXT_AWARE_CROP_OCR_LANG` (default: `eng+fra+ara`)
+- `VIDEO_WORKER_TEXT_AWARE_CROP_OCR_CONF_THRESHOLD` (default: `60.0`)
+- `VIDEO_WORKER_TEXT_AWARE_CROP_MIN_ZOOM` (default: `1.0`)
+- `VIDEO_WORKER_TEXT_AWARE_CROP_MAX_ZOOM` (default: `1.9`)
+- `VIDEO_WORKER_TEXT_AWARE_CROP_READING_HOLD_SEC` (default: `0.8`)
+- `VIDEO_WORKER_TEXT_AWARE_CROP_DEBUG_FRAMES` (default: `false`)
+
 - `VIDEO_WORKER_ENABLE_LOUDNORM` (default: `false`)
 - `VIDEO_WORKER_LOG_LEVEL` (default: `INFO`)
 - `VIDEO_WORKER_METRICS_ENABLED` (default: `true`)
