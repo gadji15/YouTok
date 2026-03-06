@@ -293,6 +293,38 @@ def write_word_level_ass_for_clip(
 
         return out
 
+    def _split_plain_token_to_fit(*, token: str, font_px: int) -> list[str]:
+        token = token.strip()
+        if not token:
+            return []
+
+        out: list[str] = []
+        rest = token
+
+        while rest:
+            if _measure_line_width_px([rest], font_px=font_px) <= safe_width_px:
+                out.append(rest if not out else _NOSPACE_MARK + rest)
+                break
+
+            lo = 1
+            hi = len(rest)
+            best = 1
+
+            while lo <= hi:
+                mid = (lo + hi) // 2
+                cand = rest[:mid]
+                if _measure_line_width_px([cand], font_px=font_px) <= safe_width_px:
+                    best = mid
+                    lo = mid + 1
+                else:
+                    hi = mid - 1
+
+            chunk = rest[:best]
+            out.append(chunk if not out else _NOSPACE_MARK + chunk)
+            rest = rest[best:].lstrip()
+
+        return out
+
     # Font bounds (spec): 56px–110px at 1080x1920. For non-vertical outputs we
     # keep a wider range so captions remain readable.
     if play_res_x <= play_res_y:
@@ -711,40 +743,11 @@ def write_word_level_ass_for_clip(
         if not parts_formatted:
             return [], [], True
 
+        has_split_tokens = False
+
         if font_path is not None:
             expanded_formatted: list[str] = []
             expanded_plain: list[str] = []
-
-            def _split_plain_to_fit_token(token: str) -> list[str]:
-                token = token.strip()
-                if not token:
-                    return []
-
-                out: list[str] = []
-                rest = token
-
-                while rest:
-                    if _measure_line_width_px([rest], font_px=font_px) <= safe_width_px:
-                        out.append(rest if not out else _NOSPACE_MARK + rest)
-                        break
-
-                    lo = 1
-                    hi = len(rest)
-                    best = 1
-                    while lo <= hi:
-                        mid = (lo + hi) // 2
-                        cand = rest[:mid]
-                        if _measure_line_width_px([cand], font_px=font_px) <= safe_width_px:
-                            best = mid
-                            lo = mid + 1
-                        else:
-                            hi = mid - 1
-
-                    chunk = rest[:best]
-                    out.append(chunk if not out else _NOSPACE_MARK + chunk)
-                    rest = rest[best:].lstrip()
-
-                return out
 
             for pf, pp in zip(parts_formatted, parts_plain):
                 if _measure_line_width_px([pp], font_px=font_px) <= safe_width_px:
@@ -753,7 +756,9 @@ def write_word_level_ass_for_clip(
                     continue
 
                 # Drop ASS formatting for split tokens to avoid breaking override tags.
-                chunks = _split_plain_to_fit_token(pp)
+                chunks = _split_plain_token_to_fit(token=pp, font_px=font_px)
+                if len(chunks) > 1:
+                    has_split_tokens = True
                 expanded_formatted.extend(chunks)
                 expanded_plain.extend(chunks)
 
@@ -765,10 +770,11 @@ def write_word_level_ass_for_clip(
         def _fits(words_line: list[str]) -> bool:
             if not words_line:
                 return True
-            if len(words_line) > words_per_line:
-                return False
-            if chars_per_line > 0 and len(_join_tokens(words_line)) > chars_per_line:
-                return False
+            if not has_split_tokens:
+                if len(words_line) > words_per_line:
+                    return False
+                if chars_per_line > 0 and len(_join_tokens(words_line)) > chars_per_line:
+                    return False
             return _measure_line_width_px(words_line, font_px=font_px) <= safe_width_px
 
         if n <= words_per_line and _fits(parts_plain):
@@ -877,18 +883,22 @@ def write_word_level_ass_for_clip(
             # Never increase font size when switching to reading mode.
             chosen_font_px = min(int(chosen_font_px), int(reading_font_size))
 
-            parts_formatted = [w.word for w in chunk]
-            parts_plain = [w.word for w in chunk]
+            tokens: list[str] = []
 
-            line1, line2, _ = _split_two_lines_px(
-                parts_formatted,
-                parts_plain,
-                font_px=chosen_font_px,
-                words_per_line=max(max_words_per_line, 8),
-                chars_per_line=max(max_chars_per_line, 48),
-            )
+            for w in chunk:
+                tok = w.word
+                if _measure_line_width_px([tok], font_px=chosen_font_px) <= safe_width_px:
+                    tokens.append(tok)
+                    continue
 
-            tokens = [strip_ass_tags(t).strip() for t in (line1 + line2) if strip_ass_tags(t).strip()]
+                chunks = _split_plain_token_to_fit(token=tok, font_px=chosen_font_px)
+                if not chunks:
+                    continue
+
+                # Ensure split chunks behave like one word (no spaces between chunks).
+                tokens.append(chunks[0].lstrip(_NOSPACE_MARK))
+                for c in chunks[1:]:
+                    tokens.append(_NOSPACE_MARK + c.lstrip(_NOSPACE_MARK))
 
             lines: list[str] = []
             cur = ""
