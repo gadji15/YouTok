@@ -22,7 +22,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
   const [language, setLanguage] = useState<'fr' | 'en' | 'auto'>('fr');
   const [segmentationMode, setSegmentationMode] = useState<'viral' | 'chapters'>('viral');
   const [outputAspect, setOutputAspect] = useState<'vertical' | 'source'>('vertical');
-  const [clipLength, setClipLength] = useState('60');
+  const [clipLength, setClipLength] = useState('180');
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
   const [subtitleTemplate, setSubtitleTemplate] = useState('cinematic_karaoke');
   const [originalityEnabled, setOriginalityEnabled] = useState(false);
@@ -33,7 +33,10 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
   }, [clipLength]);
 
   const clipLengthOk =
-    Number.isFinite(clipMaxSeconds) && clipMaxSeconds >= 15 && clipMaxSeconds <= 60;
+    Number.isFinite(clipMaxSeconds) &&
+    clipMaxSeconds >= 60 &&
+    clipMaxSeconds <= 180 &&
+    (segmentationMode === 'chapters' ? clipMaxSeconds === 180 : true);
 
   const videoId = useMemo(() => parseYoutubeVideoId(url), [url]);
   const urlOk = videoId !== null;
@@ -110,8 +113,8 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
           : { local_video_path: localVideoPath }),
         ...(language === 'auto' ? {} : { language }),
         subtitles_enabled: subtitlesEnabled,
-        clip_min_seconds: 15,
-        clip_max_seconds: clipMaxSeconds,
+        clip_min_seconds: 60,
+        clip_max_seconds: segmentationMode === 'chapters' ? 180 : clipMaxSeconds,
         subtitle_template: subtitleTemplate,
         segmentation_mode: segmentationMode,
         output_aspect: outputAspect,
@@ -247,7 +250,13 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
             <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.segmentationLabel')}</label>
             <Select
               value={segmentationMode}
-              onChange={(e) => setSegmentationMode(e.target.value as 'viral' | 'chapters')}
+              onChange={(e) => {
+                const next = e.target.value as 'viral' | 'chapters';
+                setSegmentationMode(next);
+                if (next === 'chapters') {
+                  setClipLength('180');
+                }
+              }}
             >
               <option value="viral">{t('form.segmentationViral')}</option>
               <option value="chapters">{t('form.segmentationChapters')}</option>
@@ -269,12 +278,15 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
             <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.clipLengthLabel')}</label>
             <Input
               inputMode="numeric"
-              min={15}
-              max={60}
+              min={60}
+              max={180}
               value={clipLength}
               onChange={(e) => setClipLength(e.target.value)}
+              disabled={segmentationMode === 'chapters'}
             />
-            <div className="text-xs text-[var(--text-muted)]">15–60</div>
+            <div className="text-xs text-[var(--text-muted)]">
+              {segmentationMode === 'chapters' ? 'Fixed: 180' : '60–180'}
+            </div>
           </div>
 
           <div className="grid gap-2">

@@ -88,8 +88,10 @@ class Settings(BaseSettings):
     )
 
     max_clips: int = Field(8, ge=1, le=50)
-    clip_min_seconds: float = Field(15.0, ge=1)
-    clip_max_seconds: float = Field(60.0, ge=1)
+
+    # Product constraint (mode viral + mode chapters): output clips should generally be 60–180s.
+    clip_min_seconds: float = Field(60.0, ge=1)
+    clip_max_seconds: float = Field(180.0, ge=1)
 
     subtitles_enabled: bool = Field(
         True,

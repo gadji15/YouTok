@@ -44,8 +44,8 @@ class InternalApiTest extends TestCase
             'status' => ProjectStatus::queued,
             'language' => 'fr',
             'subtitles_enabled' => false,
-            'clip_min_seconds' => 15,
-            'clip_max_seconds' => 60,
+            'clip_min_seconds' => 60,
+            'clip_max_seconds' => 180,
             'subtitle_template' => 'modern',
         ]);
 
