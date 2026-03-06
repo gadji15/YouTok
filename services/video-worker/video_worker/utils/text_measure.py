@@ -4,105 +4,73 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-import arabic_reshaper
-from bidi.algorithm import get_display
-from PIL import ImageFont
-
-
-_RTL_RE = re.compile(r"[\u0590-\u08FF]")
 _ASS_TAG_RE = re.compile(r"\{[^}]*\}")
 
 
-def contains_rtl(text: str) -> bool:
-    return _RTL_RE.search(text) is not None
-
-
 def strip_ass_tags(text: str) -> str:
+    # Remove ASS override blocks like {\pos(...)} or {\k20}.
     return _ASS_TAG_RE.sub("", text)
 
 
-def prepare_text_for_measure(text: str, *, rtl: bool) -> str:
-    if not rtl:
-        return text
+@lru_cache(maxsize=1)
+def resolve_font_path() -> Path | None:
+    """Best-effort resolution of a TrueType font file.
 
-    # Apply Arabic shaping + bidi reordering for correct visual width measurement.
-    reshaped = arabic_reshaper.reshape(text)
-    return get_display(reshaped)
+    We prefer Noto Sans (installed in the video-worker Docker image), and fall back
+    to DejaVu Sans.
+    """
 
-
-def prepare_text_for_ass(text: str, *, rtl: bool) -> str:
-    # We do the same transformation for ASS output to avoid broken shaping in renderers.
-    return prepare_text_for_measure(text, rtl=rtl)
-
-
-def _font_assets_dir() -> Path:
-    # video_worker/utils -> video_worker
-    return Path(__file__).resolve().parents[1] / "assets" / "fonts"
-
-
-def _existing(paths: list[Path]) -> Path | None:
-    for p in paths:
-        if p.exists() and p.is_file():
-            return p
-    return None
-
-
-def resolve_font_path(*, prefer_arabic: bool) -> Path | None:
-    assets = _font_assets_dir()
-
-    if prefer_arabic:
-        names = [
-            "NotoNaskhArabic-Regular.ttf",
-            "NotoSansArabic-Regular.ttf",
-            "NotoSans-Regular.ttf",
-            "DejaVuSans.ttf",
-        ]
-    else:
-        names = [
-            "NotoSans-Regular.ttf",
-            "DejaVuSans.ttf",
-        ]
-
-    # Option A (preferred): font files committed alongside the worker.
-    cand = _existing([assets / n for n in names])
-    if cand is not None:
-        return cand
-
-    # Fallback: system fonts (Docker image installs fonts-noto-core + fonts-dejavu-core).
-    system_dirs = [
-        Path("/usr/share/fonts/truetype/noto"),
-        Path("/usr/share/fonts/opentype/noto"),
-        Path("/usr/share/fonts/truetype/dejavu"),
-        Path("/usr/share/fonts"),
+    candidates = [
+        # Debian paths (fonts-noto-core)
+        Path("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"),
+        # DejaVu fallback (fonts-dejavu-core)
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     ]
 
-    for d in system_dirs:
-        if not d.exists() or not d.is_dir():
+    for p in candidates:
+        if p.exists() and p.is_file():
+            return p
+
+    roots = [
+        Path("/usr/share/fonts"),
+        Path("/usr/local/share/fonts"),
+    ]
+
+    want = {"notosans-regular.ttf", "dejavusans.ttf"}
+
+    for root in roots:
+        if not root.exists():
             continue
-        cand = _existing([d / n for n in names])
-        if cand is not None:
-            return cand
+        try:
+            for p in root.rglob("*.ttf"):
+                if p.name.lower() in want:
+                    return p
+        except Exception:
+            continue
 
     return None
 
 
-@lru_cache(maxsize=256)
-def _get_font(*, font_path: str | None, font_size: int):
+@lru_cache(maxsize=128)
+def _load_font(font_path: str | None, font_size: int):
+    from PIL import ImageFont
+
     if font_path:
         return ImageFont.truetype(font_path, int(font_size))
     return ImageFont.load_default()
 
 
-def measure_text_width_px(*, text: str, font_path: Path | None, font_size: int, rtl: bool) -> int:
-    text = strip_ass_tags(text)
-    text = prepare_text_for_measure(text, rtl=rtl)
+def measure_text_width_px(*, text: str, font_path: Path | None, font_size: int) -> int:
+    """Measure rendered text width in pixels using Pillow."""
 
-    font = _get_font(font_path=str(font_path) if font_path is not None else None, font_size=int(font_size))
+    text = strip_ass_tags(text)
+    if text == "":
+        return 0
+
+    font = _load_font(str(font_path) if font_path is not None else None, int(font_size))
 
     if hasattr(font, "getlength"):
-        w = float(font.getlength(text))
-    else:
-        bbox = font.getbbox(text)
-        w = float(bbox[2] - bbox[0])
+        return int(round(float(font.getlength(text))))
 
-    return int(round(w))
+    bbox = font.getbbox(text)
+    return int(round(float(bbox[2] - bbox[0])))
