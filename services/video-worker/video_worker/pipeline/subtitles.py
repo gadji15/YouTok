@@ -275,6 +275,24 @@ def write_word_level_ass_for_clip(
     side_margin_px = max(0, min(play_res_x // 3, side_margin_px))
     safe_width_px = max(1, int(play_res_x) - 2 * int(side_margin_px))
 
+    _NOSPACE_MARK = "\u2060"  # Word Joiner (removed before rendering); helps avoid spaces between split chunks.
+
+    def _join_tokens(tokens: list[str]) -> str:
+        out = ""
+        for tok in tokens:
+            if not tok:
+                continue
+
+            no_space = tok.startswith(_NOSPACE_MARK)
+            raw = tok[len(_NOSPACE_MARK) :] if no_space else tok
+
+            if not out:
+                out = raw
+            else:
+                out += ("" if no_space else " ") + raw
+
+        return out
+
     # Font bounds (spec): 56px–110px at 1080x1920. For non-vertical outputs we
     # keep a wider range so captions remain readable.
     if play_res_x <= play_res_y:
@@ -667,10 +685,14 @@ def write_word_level_ass_for_clip(
     def _measure_line_width_px(words_plain: list[str], *, font_px: int) -> int:
         if not words_plain:
             return 0
+
+        joined = _join_tokens(words_plain)
+
         if font_path is None:
-            return len(" ".join(words_plain)) * max(1, int(font_px))
+            return len(joined) * max(1, int(font_px))
+
         return measure_text_width_px(
-            text=" ".join(words_plain),
+            text=joined,
             font_path=font_path,
             font_size=int(font_px),
             rtl=rtl_enabled,
@@ -703,7 +725,7 @@ def write_word_level_ass_for_clip(
 
                 while rest:
                     if _measure_line_width_px([rest], font_px=font_px) <= safe_width_px:
-                        out.append(rest)
+                        out.append(rest if not out else _NOSPACE_MARK + rest)
                         break
 
                     lo = 1
@@ -718,7 +740,8 @@ def write_word_level_ass_for_clip(
                         else:
                             hi = mid - 1
 
-                    out.append(rest[:best])
+                    chunk = rest[:best]
+                    out.append(chunk if not out else _NOSPACE_MARK + chunk)
                     rest = rest[best:].lstrip()
 
                 return out
@@ -744,7 +767,7 @@ def write_word_level_ass_for_clip(
                 return True
             if len(words_line) > words_per_line:
                 return False
-            if chars_per_line > 0 and len(" ".join(words_line)) > chars_per_line:
+            if chars_per_line > 0 and len(_join_tokens(words_line)) > chars_per_line:
                 return False
             return _measure_line_width_px(words_line, font_px=font_px) <= safe_width_px
 
@@ -851,7 +874,9 @@ def write_word_level_ass_for_clip(
         if reading_mode:
             local_cinematic = False
 
-            chosen_font_px = int(reading_font_size)
+            # Never increase font size when switching to reading mode.
+            chosen_font_px = min(int(chosen_font_px), int(reading_font_size))
+
             parts_formatted = [w.word for w in chunk]
             parts_plain = [w.word for w in chunk]
 
@@ -866,40 +891,46 @@ def write_word_level_ass_for_clip(
             tokens = [strip_ass_tags(t).strip() for t in (line1 + line2) if strip_ass_tags(t).strip()]
 
             lines: list[str] = []
-            cur_line: list[str] = []
+            cur = ""
 
             for tok in tokens:
-                if not cur_line:
-                    cur_line = [tok]
+                if not tok:
                     continue
 
-                cand = cur_line + [tok]
-                if _measure_line_width_px(cand, font_px=chosen_font_px) <= safe_width_px:
-                    cur_line = cand
-                else:
-                    lines.append(" ".join(cur_line))
-                    cur_line = [tok]
+                no_space = tok.startswith(_NOSPACE_MARK)
+                raw = tok[len(_NOSPACE_MARK) :] if no_space else tok
 
-            if cur_line:
-                lines.append(" ".join(cur_line))
+                if not cur:
+                    cur = raw
+                    continue
+
+                cand = cur + ("" if no_space else " ") + raw
+                if _measure_line_width_px([cand], font_px=chosen_font_px) <= safe_width_px:
+                    cur = cand
+                else:
+                    lines.append(cur)
+                    cur = raw
+
+            if cur:
+                lines.append(cur)
 
             if rtl_enabled:
                 lines = [prepare_text_for_ass(ln, rtl=True) for ln in lines if ln.strip()]
 
-            text = "\\N".join(lines)
+            text = "\\N".join([ln for ln in lines if ln.strip()])
 
             payload = "{" + reading_prefix + f"\\fs{chosen_font_px}" + "}" + text
             return start, end, "Reading", payload
 
         if rtl_enabled:
-            l1 = prepare_text_for_ass(" ".join([strip_ass_tags(p) for p in line1]), rtl=True) if line1 else ""
-            l2 = prepare_text_for_ass(" ".join([strip_ass_tags(p) for p in line2]), rtl=True) if line2 else ""
+            l1 = prepare_text_for_ass(_join_tokens([strip_ass_tags(p) for p in line1]), rtl=True) if line1 else ""
+            l2 = prepare_text_for_ass(_join_tokens([strip_ass_tags(p) for p in line2]), rtl=True) if line2 else ""
             text = (l1 + "\\N" + l2).strip("\\N") if l2 else l1
         else:
             if line2:
-                text = " ".join(line1) + "\\N" + " ".join(line2)
+                text = _join_tokens(line1) + "\\N" + _join_tokens(line2)
             else:
-                text = " ".join(line1)
+                text = _join_tokens(line1)
 
         if local_cinematic:
             text = "{\\t(0,120,\\fscx105\\fscy105)}" + text
