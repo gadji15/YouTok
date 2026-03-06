@@ -183,6 +183,24 @@ def detect_hook_start_seconds(
                     boundary_bonus = 0.05
                 break
 
+        alignment_bonus = 0.0
+        alignment_penalty = 0.0
+        if not words:
+            close_to_boundary = False
+            for s in segments:
+                if s.start_seconds < t0 - 0.2:
+                    continue
+                if s.start_seconds > t0 + 0.2:
+                    break
+                if abs(s.start_seconds - t0) <= 0.15:
+                    close_to_boundary = True
+                    break
+
+            if close_to_boundary:
+                alignment_bonus = 0.08
+            else:
+                alignment_penalty = 0.05
+
         energy_score = 0.0
         silence_score = 0.0
         has_audio = False
@@ -206,6 +224,8 @@ def detect_hook_start_seconds(
                 + (0.20 * float(energy_score))
                 + (0.10 * float(silence_score))
                 + boundary_bonus
+                + alignment_bonus
+                - alignment_penalty
             )
         else:
             score = (
@@ -213,6 +233,8 @@ def detect_hook_start_seconds(
                 + (0.15 * float(text_score))
                 + (0.10 * float(emo))
                 + boundary_bonus
+                + alignment_bonus
+                - alignment_penalty
             )
 
         score = _clamp01(score - (off * 0.03))
