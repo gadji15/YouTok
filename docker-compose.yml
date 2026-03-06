@@ -200,6 +200,8 @@ services:
       VIDEO_WORKER_CLIP_SERVICE_BASE_URL: ${VIDEO_WORKER_CLIP_SERVICE_BASE_URL:-http://clip-service:8000}
     volumes:
       - video_worker_shared:/shared
+      - video_worker_torch_cache:/root/.cache/torch
+      - video_worker_whisper_cache:/root/.cache/whisper
     depends_on:
       redis:
         condition: service_healthy
@@ -248,3 +250,5 @@ services:
 volumes:
   db_data:
   video_worker_shared:
+  video_worker_torch_cache:
+  video_worker_whisper_cache:
