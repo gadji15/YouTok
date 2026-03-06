@@ -155,6 +155,10 @@ def detect_hook_start_seconds(
         t0 = float(clip_start_seconds + off)
         t1 = float(min(clip_end_seconds, t0 + hook_window_seconds))
 
+        lead_end = float(min(clip_end_seconds, t0 + 1.0))
+        lead_text = _collect_text(segments=segments, start=t0, end=lead_end)
+        lead_text_score = score_text(lead_text, language=language)
+
         text = _collect_text(segments=segments, start=t0, end=t1)
         text_score = score_text(text, language=language)
         emo = emotion_word_score(text, language=language)
@@ -169,8 +173,20 @@ def detect_hook_start_seconds(
                 boundary_bonus = 0.05
                 break
 
+        if boundary_bonus == 0.0:
+            for s in segments:
+                if s.start_seconds < t0:
+                    continue
+                if s.start_seconds > t0 + 0.15:
+                    break
+                if score_text(s.text, language=language) >= 0.25:
+                    boundary_bonus = 0.05
+                break
+
         energy_score = 0.0
         silence_score = 0.0
+        has_audio = False
+
         if audio_path is not None and audio_path.exists():
             a = compute_audio_window_features(
                 wav_path=audio_path,
@@ -178,16 +194,26 @@ def detect_hook_start_seconds(
                 end_seconds=min(clip_end_seconds, t0 + 1.0),
             )
             if a is not None:
+                has_audio = True
                 energy_score = _clamp01((a.rms * 4.0) + (a.rms_std * 10.0))
                 silence_score = _clamp01(1.0 - float(a.silence_ratio))
 
-        score = (
-            (0.45 * float(text_score))
-            + (0.15 * float(emo))
-            + (0.30 * float(energy_score))
-            + (0.10 * float(silence_score))
-            + boundary_bonus
-        )
+        if has_audio:
+            score = (
+                (0.40 * float(lead_text_score))
+                + (0.20 * float(text_score))
+                + (0.10 * float(emo))
+                + (0.20 * float(energy_score))
+                + (0.10 * float(silence_score))
+                + boundary_bonus
+            )
+        else:
+            score = (
+                (0.75 * float(lead_text_score))
+                + (0.15 * float(text_score))
+                + (0.10 * float(emo))
+                + boundary_bonus
+            )
 
         score = _clamp01(score - (off * 0.03))
 
@@ -223,15 +249,17 @@ def build_hook_text(
         end=float(min(clip_end_seconds, clip_start_seconds + float(window_seconds))),
     )
 
+    text = " ".join((text or "").split())
     if not text:
         return ""
 
-    for sep in ["? ", "! ", ". ", "… ", "... "]:
-        if sep in text:
-            text = text.split(sep, 1)[0].strip() + sep.strip()
-            break
+    sentences = [s.strip() for s in re.split(r"(?<=[\.!\?…])\s+", text) if s.strip()]
+    if sentences:
+        candidate = sentences[0]
+        if len(sentences) >= 2 and len(_WORD_RE.findall(candidate)) <= 2:
+            candidate = (sentences[0] + " " + sentences[1]).strip()
+        text = candidate
 
-    text = " ".join(text.split())
     if len(text) <= max_chars:
         return text
 
