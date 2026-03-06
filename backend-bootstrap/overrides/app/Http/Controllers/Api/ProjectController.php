@@ -64,7 +64,7 @@ class ProjectController
             'local_video_path' => ['sometimes', 'nullable', 'string', 'max:4096'],
 
             // Rendering options
-            'language' => ['sometimes', 'nullable', 'in:fr,en'],
+            'language' => ['sometimes', 'nullable', 'in:fr,en,ar'],
             'subtitles_enabled' => ['sometimes', 'boolean'],
             'clip_min_seconds' => ['sometimes', 'integer', 'min:60', 'max:180'],
             'clip_max_seconds' => ['sometimes', 'integer', 'min:60', 'max:180', 'gte:clip_min_seconds'],

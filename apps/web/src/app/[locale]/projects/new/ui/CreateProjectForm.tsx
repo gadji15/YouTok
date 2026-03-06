@@ -19,7 +19,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
   const [sourceType, setSourceType] = useState<'youtube' | 'local'>('youtube');
   const [url, setUrl] = useState('');
   const [localFile, setLocalFile] = useState<File | null>(null);
-  const [language, setLanguage] = useState<'fr' | 'en' | 'auto'>('fr');
+  const [language, setLanguage] = useState<'fr' | 'en' | 'ar' | 'auto'>('fr');
   const [segmentationMode, setSegmentationMode] = useState<'viral' | 'chapters'>('viral');
   const [outputAspect, setOutputAspect] = useState<'vertical' | 'source'>('vertical');
   const [clipLength, setClipLength] = useState('180');
@@ -238,10 +238,11 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
             <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.languageLabel')}</label>
             <Select
               value={language}
-              onChange={(e) => setLanguage(e.target.value as 'fr' | 'en' | 'auto')}
+              onChange={(e) => setLanguage(e.target.value as 'fr' | 'en' | 'ar' | 'auto')}
             >
               <option value="fr">FR</option>
               <option value="en">EN</option>
+              <option value="ar">AR</option>
               <option value="auto">{t('form.languageAuto')}</option>
             </Select>
           </div>
