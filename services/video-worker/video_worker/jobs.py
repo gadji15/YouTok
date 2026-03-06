@@ -880,7 +880,9 @@ def process_job(
                     "viral_effect_style": effective_viral_effect_style,
                     "viral_zoom_intensity": effective_viral_zoom_intensity,
                     "viral_hook_text_enabled": effective_viral_hook_text_enabled,
-                    "viral_emojis                    "word_timings": (
+                    "viral_emojis_enabled": effective_viral_emojis_enabled,
+                    "viral_max_emojis": effective_viral_max_emojis,
+                    "word_timings": (
                         [
                             {
                                 "word": w.word,

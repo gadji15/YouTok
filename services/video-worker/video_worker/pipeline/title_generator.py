@@ -403,7 +403,7 @@ def _analyze_transcript(*, segments: list[TranscriptSegment], language: str) -> 
         "theme": theme,
         "key_phrase": key_phrase,
         "power_phrases": power_phrases,
-ignals": signals,
+        "signals": signals,
     }
 
 
