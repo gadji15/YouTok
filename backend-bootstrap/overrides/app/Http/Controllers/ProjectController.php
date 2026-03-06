@@ -107,6 +107,8 @@ class ProjectController extends Controller
             'source_type' => $sourceType,
             'youtube_url' => $sourceType === 'youtube' ? $youtubeUrl : null,
             'local_video_path' => $sourceType === 'local' ? $localVideoPath : null,
+            'clip_min_seconds' => 60,
+            'clip_max_seconds' => 180,
             'output_aspect' => $request->input('output_aspect') ?? 'vertical',
             'originality_mode' => $request->boolean('originality_enabled') ? 'voiceover' : 'none',
             'status' => ProjectStatus::queued,

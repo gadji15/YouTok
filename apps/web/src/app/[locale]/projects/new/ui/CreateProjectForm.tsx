@@ -22,7 +22,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
   const [language, setLanguage] = useState<'fr' | 'en' | 'auto'>('fr');
   const [segmentationMode, setSegmentationMode] = useState<'viral' | 'chapters'>('viral');
   const [outputAspect, setOutputAspect] = useState<'vertical' | 'source'>('vertical');
-  const [clipLength, setClipLength] = useState('60');
+  const [clipLength, setClipLength] = useState('180');
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
   const [subtitleTemplate, setSubtitleTemplate] = useState('cinematic_karaoke');
   const [originalityEnabled, setOriginalityEnabled] = useState(false);
@@ -33,7 +33,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
   }, [clipLength]);
 
   const clipLengthOk =
-    Number.isFinite(clipMaxSeconds) && clipMaxSeconds >= 15 && clipMaxSeconds <= 60;
+    Number.isFinite(clipMaxSeconds) && clipMaxSeconds >= 60 && clipMaxSeconds <= 180;
 
   const videoId = useMemo(() => parseYoutubeVideoId(url), [url]);
   const urlOk = videoId !== null;
@@ -110,7 +110,7 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
           : { local_video_path: localVideoPath }),
         ...(language === 'auto' ? {} : { language }),
         subtitles_enabled: subtitlesEnabled,
-        clip_min_seconds: 15,
+        clip_min_seconds: 60,
         clip_max_seconds: clipMaxSeconds,
         subtitle_template: subtitleTemplate,
         segmentation_mode: segmentationMode,
@@ -269,12 +269,12 @@ export function CreateProjectForm({ redirectLocale }: { redirectLocale: string }
             <label className="text-xs font-medium text-[var(--text-muted)]">{t('form.clipLengthLabel')}</label>
             <Input
               inputMode="numeric"
-              min={15}
-              max={60}
+              min={60}
+              max={180}
               value={clipLength}
               onChange={(e) => setClipLength(e.target.value)}
             />
-            <div className="text-xs text-[var(--text-muted)]">15–60</div>
+            <div className="text-xs text-[var(--text-muted)]">60–180</div>
           </div>
 
           <div className="grid gap-2">

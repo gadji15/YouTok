@@ -31,6 +31,7 @@ from .pipeline.word_alignment import (
 from .redis_conn import get_redis
 from .storage import get_s3_config, s3_enabled, upload_file_to_s3
 from .utils.errors import format_exception_short
+from .utils.ffprobe import probe_video
 from .utils.files import atomic_write_text
 from .utils.retry import retry
 
@@ -303,14 +304,15 @@ def process_job(
     effective_min_seconds = settings.clip_min_seconds if clip_min_seconds is None else float(clip_min_seconds)
     effective_max_seconds = settings.clip_max_seconds if clip_max_seconds is None else float(clip_max_seconds)
 
-    # Product constraint (viral mode): clips must be 15–60 seconds (TikTok/Reels-ready).
+    # Product constraint:
+    # - viral mode: 60–180 seconds
+    # - chapters mode: ignore min/max; use YouTube chapters as-is; fallback slices are 180s.
     if effective_segmentation_mode == "viral":
-        effective_min_seconds = max(15.0, min(60.0, effective_min_seconds))
-        effective_max_seconds = max(effective_min_seconds, min(60.0, effective_max_seconds))
+        effective_min_seconds = max(60.0, min(180.0, effective_min_seconds))
+        effective_max_seconds = max(effective_min_seconds, min(180.0, effective_max_seconds))
     else:
-        # Chapter/slice mode still uses clip_max_seconds as the slice size.
-        effective_min_seconds = max(15.0, min(60.0, effective_min_seconds))
-        effective_max_seconds = max(effective_min_seconds, min(60.0, effective_max_seconds))
+        effective_min_seconds = max(1.0, float(effective_min_seconds))
+        effective_max_seconds = max(1.0, float(effective_max_seconds))
 
     effective_max_clips = settings.max_clips if max_clips is None else int(max_clips)
     if effective_segmentation_mode == "viral":
@@ -665,14 +667,14 @@ def process_job(
                     clips = build_chapter_clips(
                         chapters=chapters,
                         segments=segments,
-                        max_seconds=effective_max_seconds,
-                        min_seconds=effective_min_seconds,
+                        max_seconds=None,
+                        min_seconds=1.0,
                     )
                 else:
                     clips = build_sequential_clips(
                         duration_seconds=duration_seconds,
-                        max_seconds=effective_max_seconds,
-                        min_seconds=effective_min_seconds,
+                        max_seconds=180.0,
+                        min_seconds=1.0,
                     )
             else:
                 clips = segment_candidates(
