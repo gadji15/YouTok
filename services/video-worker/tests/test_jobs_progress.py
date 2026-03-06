@@ -49,6 +49,9 @@ def test_best_effort_progress_callback_posts_expected_payload(monkeypatch, tmp_p
         logger=structlog.get_logger(),
     )
 
+    # Checkpoint written for resume support
+    assert ctx.pipeline_state_path.exists()
+
     assert seen["callback_url"] == "https://example.test/callback"
     assert seen["callback_secret"] == "secret"
 

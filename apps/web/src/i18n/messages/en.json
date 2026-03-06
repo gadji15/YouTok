@@ -49,18 +49,24 @@
   },
   "projectNew": {
     "title": "New project",
-    "subtitle": "Paste a YouTube URL and start processing.",
+    "subtitle": "Choose a source and start processing.",
     "back": "Back",
     "form": {
       "nameLabel": "Project name",
       "namePlaceholder": "e.g. Best of Podcast #12",
+      "sourceLabel": "Source",
+      "sourceYoutube": "YouTube URL",
+      "sourceLocal": "Local file",
       "urlLabel": "YouTube URL",
       "urlPlaceholder": "https://www.youtube.com/watch?v=…",
       "urlValid": "Valid URL",
       "urlInvalid": "Invalid URL",
+      "localFileLabel": "Local video file",
+      "localFileHint": "Choose a video file to upload",
       "optionsTitle": "Options",
       "optionsHint": "You’ll be able to fine-tune later (V1.1).",
       "languageLabel": "Language",
+      "languageAuto": "Auto (detect)",
       "segmentationLabel": "Segmentation",
       "segmentationViral": "Viral highlights",
       "segmentationChapters": "YouTube chapters (else slices)",
@@ -71,9 +77,22 @@
       "subtitlesLabel": "Subtitles",
       "subtitlesOn": "On",
       "subtitlesOff": "Off",
+      "subtitleTemplateLabel": "Subtitle style",
+      "subtitleTemplateHint": "Pick a style. You can add more later.",
+      "subtitleTemplateDefault": "Default",
+      "subtitleTemplateModern": "Modern",
+      "subtitleTemplateModernKaraoke": "Modern (karaoke)",
+      "subtitleTemplateCinematic": "Cinematic",
+      "subtitleTemplateCinematicKaraoke": "Cinematic (karaoke)",
+      "subtitleTemplateStorytelling": "Storytelling (viral)",
+      "subtitleTemplatePodcast": "Podcast (karaoke)",
+      "subtitleTemplateMotivation": "Motivation (viral)",
       "originalityLabel": "Originality mode",
       "originalityHint": "Adds a transformation (e.g. voiceover). Does not guarantee copyright safety.",
-      "create": "Create project"
+      "create": "Create project",
+      "errors": {
+        "missingLocalFile": "Select a video file."
+      }
     }
   },
   "project": {
@@ -301,7 +320,20 @@
       "empty": "No title suggestions yet.",
       "copy": "Copy",
       "copied": "Copied",
-      "score": "Score: {value}%"
+      "score": "Score: {value}%",
+      "editTitle": "Title",
+      "description": "Description",
+      "editHashtags": "Hashtags",
+      "save": "Save",
+      "saving": "Saving…",
+      "alternatives": "Alternatives",
+      "use": "Use",
+      "analysis": {
+        "title": "Analysis",
+        "theme": "Theme",
+        "summary": "Summary",
+        "keyPhrase": "Key phrase"
+      }
     },
     "actions": {
       "title": "Actions",

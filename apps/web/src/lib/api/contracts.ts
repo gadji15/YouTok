@@ -18,6 +18,19 @@ export type ApiClipTitleCandidates = {
   provider: string | null;
   description: string | null;
   hashtags: string[];
+
+  // Part 5 (optional)
+  hooks?: string[];
+  analysis?: {
+    summary?: string | null;
+    theme?: string | null;
+    key_phrase?: string | null;
+    clip_key_phrase?: string | null;
+    keywords?: string[];
+    signals?: string[];
+    clip_phrases?: string[];
+  } | null;
+
   candidates: { title: string; score: number; features?: Record<string, number> | null }[];
   top3: string[];
 };
@@ -61,6 +74,10 @@ export type ApiProjectArtifacts = {
   transcript_json_path: string | null;
   subtitles_srt_path: string | null;
   clips_json_path: string | null;
+  words_json_path: string | null;
+  segments_json_path: string | null;
+  source_metadata_json_path: string | null;
+  source_thumbnail_path: string | null;
 };
 
 export type ApiProjectOptions = {
@@ -77,7 +94,8 @@ export type ApiProjectOptions = {
 export type ApiProjectListItem = {
   id: string;
   name: string;
-  youtube_url: string;
+  source_type: 'youtube' | 'local';
+  youtube_url: string | null;
   status: ApiProjectStatus;
   stage: string | null;
   progress_percent: number | null;
@@ -92,7 +110,9 @@ export type ApiProjectsIndexResponse = {
 export type ApiProjectDetail = {
   id: string;
   name: string;
-  youtube_url: string;
+  source_type: 'youtube' | 'local';
+  youtube_url: string | null;
+  local_video_path: string | null;
   status: ApiProjectStatus;
   stage: string | null;
   progress_percent: number | null;
@@ -110,7 +130,8 @@ export type ApiProjectDetail = {
 
 export type ApiCreateProjectRequest = {
   name: string;
-  youtube_url: string;
+  youtube_url?: string;
+  local_video_path?: string;
 
   language?: ApiProjectLanguage | null;
   subtitles_enabled?: boolean;

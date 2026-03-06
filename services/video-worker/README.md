@@ -25,10 +25,13 @@ Common:
 - `VIDEO_WORKER_WHISPER_TEMPERATURE` (default: `0.0`)
 - `VIDEO_WORKER_WHISPER_BEAM_SIZE` (default: `1`)
 - `VIDEO_WORKER_WHISPER_BEST_OF` (default: `1`)
-- `VIDEO_WORKER_CLIP_MIN_SECONDS` (default: `60`)
-- `VIDEO_WORKER_CLIP_MAX_SECONDS` (default: `180`)
+- `VIDEO_WORKER_CLIP_MIN_SECONDS` (default: `15`)
+- `VIDEO_WORKER_CLIP_MAX_SECONDS` (default: `60`)
 - `VIDEO_WORKER_SUBTITLES_ENABLED` (default: `true`)
-- `VIDEO_WORKER_SUBTITLE_TEMPLATE` (default: `modern_karaoke`; one of `default`, `modern`, `karaoke`, `modern_karaoke`)
+- `VIDEO_WORKER_SUBTITLE_TEMPLATE` (default: `modern_karaoke`; one of `default`, `modern`, `karaoke`, `modern_karaoke`, `cinematic`, `cinematic_karaoke`, `storytelling`, `podcast`, `motivation`)
+- `VIDEO_WORKER_SUBTITLE_MAX_WORDS_PER_LINE` (default: `6`)
+- `VIDEO_WORKER_SUBTITLE_MAX_CHARS_PER_LINE` (default: `36`)
+- `VIDEO_WORKER_SUBTITLE_CLIP_REALIGN_ENABLED` (default: `false`; enables slow per-clip word re-alignment for tighter timings)
 - `VIDEO_WORKER_TITLE_PROVIDER` (default: `heuristic`; one of `heuristic`, `openai`)
 - `VIDEO_WORKER_OPENAI_API_KEY` (default: empty; required when `TITLE_PROVIDER=openai`)
 - `VIDEO_WORKER_OPENAI_MODEL` (default: `gpt-4.1-mini`)
@@ -47,6 +50,18 @@ Common:
 API hardening (optional):
 - `VIDEO_WORKER_API_KEY` (default: empty). If set, `POST /jobs` requires `Authorization: Bearer <key>`.
 - `VIDEO_WORKER_CALLBACK_HOST_ALLOWLIST` (default: empty). If set, rejects jobs where `callback_url.host` is not in the comma-separated allowlist.
+
+Artifact storage (S3 / R2 / MinIO):
+
+If `VIDEO_WORKER_S3_BUCKET` is set, the worker uploads completed artifacts to object storage and returns public URLs in the callback payload.
+
+- `VIDEO_WORKER_S3_BUCKET` (required to enable)
+- `VIDEO_WORKER_S3_PREFIX` (default: `hikma`)
+- `VIDEO_WORKER_S3_REGION` (optional)
+- `VIDEO_WORKER_S3_ENDPOINT_URL` (optional; for MinIO/R2)
+- `VIDEO_WORKER_S3_ACCESS_KEY_ID` / `VIDEO_WORKER_S3_SECRET_ACCESS_KEY`
+- `VIDEO_WORKER_S3_PUBLIC_BASE_URL` (optional; if set, URLs are `<base>/<key>`)
+- `VIDEO_WORKER_S3_CLEANUP_LOCAL` (default: `false`)
 
 ## Run locally
 
@@ -127,6 +142,10 @@ Payload shape:
     "transcript_json_path": "...",
     "subtitles_srt_path": "...",
     "clips_json_path": "...",
+    "words_json_path": "...",
+    "segments_json_path": "...",
+    "source_metadata_json_path": "...",
+    "source_thumbnail_path": "...",
     "clips": [
       {
         "clip_id": "clip_001",
@@ -145,9 +164,12 @@ Payload shape:
 }
 ```
 
-Additional artifacts written to disk (not currently included in the callback payload):
+Additional artifacts written to disk (and included in the callback payload when available):
 
 - `projects/<project_id>/artifacts/words.json`: word-level timestamps `{word,start,end,confidence}` (WhisperX when available, otherwise heuristic fallback).
+- `projects/<project_id>/artifacts/segments.json`: selected segments with `{segment_id,start_time,end_time,viral_score,text,word_timestamps}`.
+- `projects/<project_id>/artifacts/source_metadata.json`: best-effort yt-dlp metadata (or ffprobe metadata for local file mode).
+- `projects/<project_id>/artifacts/thumbnail.jpg`: best-effort thumbnail (YouTube mode).
 
 ## Integration test plan (curl)
 
@@ -190,6 +212,19 @@ curl -sS -X POST http://localhost:8000/jobs \
   -d '{
     "project_id": "proj_1",
     "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "callback_url": "http://localhost:8080/api/worker/callback",
+    "callback_secret": "supersecret"
+  }'
+```
+
+Local file mode (worker must be able to read the path inside its container):
+
+```bash
+curl -sS -X POST http://localhost:8000/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "project_id": "proj_1",
+    "local_video_path": "/shared/uploads/source.mp4",
     "callback_url": "http://localhost:8080/api/worker/callback",
     "callback_secret": "supersecret"
   }'

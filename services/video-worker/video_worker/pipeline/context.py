@@ -72,3 +72,23 @@ class JobContext:
     @property
     def clips_json_path(self) -> Path:
         return self.project_artifacts_dir / "clips.json"
+
+    @property
+    def segments_json_path(self) -> Path:
+        return self.project_artifacts_dir / "segments.json"
+
+    @property
+    def source_metadata_json_path(self) -> Path:
+        return self.project_artifacts_dir / "source_metadata.json"
+
+    @property
+    def source_thumbnail_path(self) -> Path:
+        return self.project_artifacts_dir / "thumbnail.jpg"
+
+    @property
+    def pipeline_state_path(self) -> Path:
+        return self.project_artifacts_dir / "pipeline_state.json"
+
+    @property
+    def title_candidates_json_path(self) -> Path:
+        return self.project_artifacts_dir / "title_candidates.json"

@@ -6,9 +6,19 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const res = await laravelInternalFetch(
-    `/api/projects/${encodeURIComponent(id)}/artifacts/clips`
-  );
+  const res = await laravelInternalFetch(`/api/projects/${encodeURIComponent(id)}/artifacts/clips`, {
+    redirect: 'manual',
+  });
+
+  const location = res.headers.get('location');
+  if (location && res.status >= 300 && res.status < 400) {
+    return new Response(null, {
+      status: res.status,
+      headers: {
+        location,
+      },
+    });
+  }
 
   return new Response(res.body, {
     status: res.status,

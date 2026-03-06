@@ -16,24 +16,56 @@ def download_youtube_video(
     logger: structlog.BoundLogger,
     max_retries: int = 2,
     retry_backoff_seconds: float = 1.0,
+    metadata_json_path: Path | None = None,
+    thumbnail_path: Path | None = None,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    def _move_sidecars() -> None:
+        if metadata_json_path is not None:
+            info_candidates = sorted(output_path.parent.glob(output_path.stem + ".*.info.json"))
+            if not info_candidates:
+                info_candidates = sorted(output_path.parent.glob(output_path.stem + ".info.json"))
+
+            if info_candidates:
+                metadata_json_path.parent.mkdir(parents=True, exist_ok=True)
+                info_candidates[0].replace(metadata_json_path)
+
+        if thumbnail_path is not None:
+            thumb_candidates: list[Path] = []
+            for ext in (".jpg", ".jpeg", ".png", ".webp"):
+                thumb_candidates.extend(sorted(output_path.parent.glob(output_path.stem + f".*{ext}")))
+                thumb_candidates.extend(sorted(output_path.parent.glob(output_path.stem + ext)))
+
+            if thumb_candidates:
+                thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
+                thumb_candidates[0].replace(thumbnail_path)
+
     if output_path.exists() and output_path.stat().st_size > 0:
-        logger.info("download.skip", path=str(output_path))
+        logger.info("download.skip_existing", path=str(output_path))
+        if metadata_json_path is not None or thumbnail_path is not None:
+            _move_sidecars()
         return output_path
 
     if output_path.exists() and output_path.stat().st_size == 0:
         output_path.unlink(missing_ok=True)
 
     def _cleanup_temp() -> None:
+        # Only remove obviously stale sidecar files. Keep partial downloads to allow resume.
         for p in output_path.parent.glob(output_path.stem + ".*"):
             if p == output_path:
                 continue
-            p.unlink(missing_ok=True)
 
-        # Common yt-dlp leftovers.
-        for p in output_path.parent.glob(output_path.stem + ".*part"):
+            # Keep yt-dlp partial files to allow resume (-c).
+            if p.suffix.endswith(".part"):
+                continue
+
+            # Keep info.json/thumbnail; we'll move them after download.
+            if p.name.endswith(".info.json"):
+                continue
+            if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}:
+                continue
+
             p.unlink(missing_ok=True)
 
     _cleanup_temp()
@@ -44,29 +76,36 @@ def download_youtube_video(
         return isinstance(exc, subprocess.CalledProcessError)
 
     def _do_download() -> None:
-        _cleanup_temp()
-        run(
-            [
-                "yt-dlp",
-                "--no-progress",
-                "--no-playlist",
-                "--retries",
-                "3",
-                "--fragment-retries",
-                "3",
-                "-f",
-                # Prefer H.264/AVC (avc1) to avoid AV1 decode issues in some environments.
-                # Keep mp4 where possible.
-                "bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                "--merge-output-format",
-                "mp4",
-                "--force-overwrites",
-                "-o",
-                str(tmp_template),
-                youtube_url,
-            ],
-            logger=logger,
-        )
+        args = [
+            "yt-dlp",
+            "--no-progress",
+            "--no-playlist",
+            "--retries",
+            "3",
+            "--fragment-retries",
+            "3",
+            # Resume partial downloads when possible.
+            "-c",
+            "--no-overwrites",
+            "-f",
+            # Prefer H.264/AVC (avc1) to avoid AV1 decode issues in some environments.
+            # Keep mp4 where possible.
+            "bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "--merge-output-format",
+            "mp4",
+            "-o",
+            str(tmp_template),
+        ]
+
+        # Metadata sidecars (best-effort): info.json + thumbnail.
+        if metadata_json_path is not None:
+            args += ["--write-info-json"]
+        if thumbnail_path is not None:
+            args += ["--write-thumbnail", "--convert-thumbnails", "jpg"]
+
+        args.append(youtube_url)
+
+        run(args, logger=logger)
 
     retry(
         _do_download,
@@ -92,6 +131,8 @@ def download_youtube_video(
 
     if output_path.stat().st_size <= 0:
         raise RuntimeError("download produced an empty file")
+
+    _move_sidecars()
 
     logger.info("download.done", path=str(output_path), size_bytes=output_path.stat().st_size)
     return output_path

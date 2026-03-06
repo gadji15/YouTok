@@ -13,8 +13,8 @@ return new class extends Migration
         Schema::table('projects', function (Blueprint $table) {
             $table->string('language', 8)->nullable()->after('youtube_url');
             $table->boolean('subtitles_enabled')->default(true)->after('language');
-            $table->unsignedSmallInteger('clip_min_seconds')->default(60)->after('subtitles_enabled');
-            $table->unsignedSmallInteger('clip_max_seconds')->default(180)->after('clip_min_seconds');
+            $table->unsignedSmallInteger('clip_min_seconds')->default(15)->after('subtitles_enabled');
+            $table->unsignedSmallInteger('clip_max_seconds')->default(60)->after('clip_min_seconds');
             $table->string('subtitle_template', 32)->nullable()->after('clip_max_seconds');
         });
     }

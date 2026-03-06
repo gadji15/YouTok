@@ -9,7 +9,7 @@
         <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900">
-                    <form method="POST" action="{{ route('projects.store') }}" class="space-y-6">
+                    <form method="POST" action="{{ route('projects.store') }}" class="space-y-6" enctype="multipart/form-data">
                         @csrf
 
                         <div>
@@ -22,8 +22,17 @@
                         <div>
                             <x-input-label for="youtube_url" value="YouTube URL" />
                             <x-text-input id="youtube_url" name="youtube_url" type="url" class="mt-1 block w-full"
-                                value="{{ old('youtube_url') }}" required />
+                                value="{{ old('youtube_url') }}" />
+                            <div class="mt-1 text-sm text-gray-600">Optionnel si vous uploadez un fichier local.</div>
                             <x-input-error class="mt-2" :messages="$errors->get('youtube_url')" />
+                        </div>
+
+                        <div>
+                            <x-input-label for="local_video_file" value="Local video file" />
+                            <input id="local_video_file" name="local_video_file" type="file" accept="video/*"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
+                            <div class="mt-1 text-sm text-gray-600">Upload un fichier vidéo au lieu d’une URL YouTube.</div>
+                            <x-input-error class="mt-2" :messages="$errors->get('local_video_file')" />
                         </div>
 
                         <div>
@@ -59,6 +68,15 @@
                                 <option value="cinematic_karaoke"
                                     {{ old('subtitle_template', 'cinematic_karaoke') === 'cinematic_karaoke' ? 'selected' : '' }}>
                                     Cinematic (karaoke)</option>
+                                <option value="storytelling_karaoke"
+                                    {{ old('subtitle_template', 'cinematic_karaoke') === 'storytelling_karaoke' ? 'selected' : '' }}>
+                                    Storytelling (viral)</option>
+                                <option value="podcast_karaoke"
+                                    {{ old('subtitle_template', 'cinematic_karaoke') === 'podcast_karaoke' ? 'selected' : '' }}>
+                                    Podcast (karaoke)</option>
+                                <option value="motivation_karaoke"
+                                    {{ old('subtitle_template', 'cinematic_karaoke') === 'motivation_karaoke' ? 'selected' : '' }}>
+                                    Motivation (viral)</option>
                             </select>
                             <div class="mt-1 text-sm text-gray-600">Choisissez un style (on pourra en ajouter d’autres).
                             </div>

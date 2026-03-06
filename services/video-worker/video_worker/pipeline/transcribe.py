@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -102,11 +103,23 @@ def transcribe_audio(
         text = (seg.get("text") or "").strip()
         if not text:
             continue
+
+        # Whisper provides avg_logprob (log probability per token). Convert to a
+        # rough 0..1 confidence signal.
+        avg_logprob = seg.get("avg_logprob")
+        confidence = None
+        if isinstance(avg_logprob, (int, float)):
+            try:
+                confidence = float(max(0.0, min(1.0, math.exp(float(avg_logprob)))))
+            except (OverflowError, ValueError, TypeError):
+                confidence = None
+
         segments.append(
             TranscriptSegment(
                 start_seconds=float(seg["start"]),
                 end_seconds=float(seg["end"]),
                 text=text,
+                confidence=confidence,
             )
         )
 
@@ -131,6 +144,7 @@ def write_transcript_json(
                 "start": s.start_seconds,
                 "end": s.end_seconds,
                 "text": s.text,
+                "confidence": s.confidence,
             }
             for s in segments
         ]
@@ -140,3 +154,40 @@ def write_transcript_json(
         payload["meta"] = meta
 
     atomic_write_text(output_path, json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def load_transcript_json(path: Path) -> list[TranscriptSegment]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    segs = raw.get("segments")
+
+    out: list[TranscriptSegment] = []
+    if not isinstance(segs, list):
+        return out
+
+    for s in segs:
+        if not isinstance(s, dict):
+            continue
+
+        start = s.get("start")
+        end = s.get("end")
+        text = s.get("text")
+
+        if start is None or end is None or not isinstance(text, str):
+            continue
+
+        conf = s.get("confidence")
+        out.append(
+            TranscriptSegment(
+                start_seconds=float(start),
+                end_seconds=float(end),
+                text=text.strip(),
+                confidence=float(conf) if isinstance(conf, (int, float)) else None,
+            )
+        )
+
+    out = [s for s in out if s.text]
+    out.sort(key=lambda x: (x.start_seconds, x.end_seconds))
+    return out
+
+
+

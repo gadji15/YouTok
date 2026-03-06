@@ -7,10 +7,11 @@ namespace App\Http\Controllers;
 use App\Models\Clip;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class ClipAssetController extends Controller
 {
-    public function video(Request $request, Clip $clip): BinaryFileResponse
+    public function video(Request $request, Clip $clip): Response
     {
         $this->authorize('view', $clip);
 
@@ -19,7 +20,7 @@ class ClipAssetController extends Controller
             abort(404);
         }
 
-        return $this->serveLocalFile(
+        return $this->serveFile(
             absolutePath: $path,
             contentType: 'video/mp4',
             downloadName: ($clip->external_id ?? (string) $clip->id).'.mp4',
@@ -27,7 +28,7 @@ class ClipAssetController extends Controller
         );
     }
 
-    public function downloadAss(Request $request, Clip $clip): BinaryFileResponse
+    public function downloadAss(Request $request, Clip $clip): Response
     {
         $this->authorize('view', $clip);
 
@@ -36,7 +37,7 @@ class ClipAssetController extends Controller
             abort(404);
         }
 
-        return $this->serveLocalFile(
+        return $this->serveFile(
             absolutePath: $path,
             contentType: 'text/plain; charset=utf-8',
             downloadName: ($clip->external_id ?? (string) $clip->id).'.ass',
@@ -44,7 +45,7 @@ class ClipAssetController extends Controller
         );
     }
 
-    public function downloadSrt(Request $request, Clip $clip): BinaryFileResponse
+    public function downloadSrt(Request $request, Clip $clip): Response
     {
         $this->authorize('view', $clip);
 
@@ -53,7 +54,7 @@ class ClipAssetController extends Controller
             abort(404);
         }
 
-        return $this->serveLocalFile(
+        return $this->serveFile(
             absolutePath: $path,
             contentType: 'text/plain; charset=utf-8',
             downloadName: ($clip->external_id ?? (string) $clip->id).'.srt',
@@ -61,13 +62,18 @@ class ClipAssetController extends Controller
         );
     }
 
-    private function serveLocalFile(
+    private function serveFile(
         string $absolutePath,
         string $contentType,
         string $downloadName,
         bool $inline,
-    ): BinaryFileResponse {
-        $real = realpath($absolutePath);
+    ): Response {
+        $path = trim($absolutePath);
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            return redirect()->away($path);
+        }
+
+        $real = realpath($path);
         if ($real === false || !is_file($real)) {
             abort(404);
         }

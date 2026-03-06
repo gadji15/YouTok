@@ -60,6 +60,30 @@
                                     @else
                                         <span class="text-gray-400">clips.json —</span>
                                     @endif
+
+                                    @if ($project->words_json_path)
+                                        <a class="text-indigo-600 hover:text-indigo-900" href="{{ route('projects.artifacts.words', $project) }}">words.json</a>
+                                    @else
+                                        <span class="text-gray-400">words.json —</span>
+                                    @endif
+
+                                    @if ($project->segments_json_path)
+                                        <a class="text-indigo-600 hover:text-indigo-900" href="{{ route('projects.artifacts.segments', $project) }}">segments.json</a>
+                                    @else
+                                        <span class="text-gray-400">segments.json —</span>
+                                    @endif
+
+                                    @if ($project->source_metadata_json_path)
+                                        <a class="text-indigo-600 hover:text-indigo-900" href="{{ route('projects.artifacts.source_metadata', $project) }}">source_metadata.json</a>
+                                    @else
+                                        <span class="text-gray-400">source_metadata.json —</span>
+                                    @endif
+
+                                    @if ($project->source_thumbnail_path)
+                                        <a class="text-indigo-600 hover:text-indigo-900" href="{{ route('projects.artifacts.thumbnail', $project) }}">thumbnail.jpg</a>
+                                    @else
+                                        <span class="text-gray-400">thumbnail.jpg —</span>
+                                    @endif
                                 </div>
                             </div>
 

@@ -59,6 +59,11 @@ def create_app() -> FastAPI:
     def create_job(req: JobCreateRequest, authorization: str | None = Header(default=None)) -> JobCreateResponse:
         require_api_key(authorization)
 
+        if not req.youtube_url and not req.local_video_path:
+            raise HTTPException(status_code=422, detail="one_of_youtube_url_or_local_video_path_required")
+        if req.youtube_url and req.local_video_path:
+            raise HTTPException(status_code=422, detail="only_one_source_allowed")
+
         if settings.callback_host_allowlist:
             allowed = {h.strip() for h in settings.callback_host_allowlist.split(",") if h.strip()}
             host = getattr(req.callback_url, "host", None)
@@ -72,7 +77,8 @@ def create_app() -> FastAPI:
             process_job,
             job_id,
             req.project_id,
-            str(req.youtube_url),
+            str(req.youtube_url or ""),
+            req.local_video_path,
             str(req.callback_url),
             req.callback_secret,
             req.language,
@@ -84,6 +90,12 @@ def create_app() -> FastAPI:
             req.max_clips,
             req.originality_mode,
             req.output_aspect,
+            req.viral_engine_enabled,
+            req.viral_effect_style,
+            req.viral_zoom_intensity,
+            req.viral_hook_text_enabled,
+            req.viral_emojis_enabled,
+            req.viral_max_emojis,
             job_id=job_id,
             result_ttl=settings.rq_result_ttl_seconds,
         )

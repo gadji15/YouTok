@@ -9,7 +9,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="VIDEO_WORKER_", extra="ignore")
 
-    redis_url: str = Field(..., description="Redis connection URL")
+    redis_url: str = Field(
+        "redis://redis:6379/0",
+        description="Redis connection URL",
+    )
     queue_name: str = Field("video-worker", description="RQ queue name")
 
     # Optional API key to protect POST /jobs.
@@ -36,6 +39,17 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = Field("", description="Custom S3 endpoint URL (MinIO/Wasabi/etc)")
     s3_access_key_id: str = Field("", description="S3 access key id")
     s3_secret_access_key: str = Field("", description="S3 secret access key")
+    s3_public_base_url: str = Field(
+        "",
+        description=(
+            "Optional public base URL for downloads (e.g. https://cdn.example.com). "
+            "If set, uploaded keys are exposed as <base>/<key>."
+        ),
+    )
+    s3_cleanup_local: bool = Field(
+        False,
+        description="If true, delete local artifacts after a successful S3 upload",
+    )
 
     whisper_model: str = Field(
         "base",
@@ -73,9 +87,9 @@ class Settings(BaseSettings):
         description="Optional Whisper initial prompt to bias transcription (e.g. names, domain vocabulary)",
     )
 
-    max_clips: int = Field(5, ge=1, le=50)
-    clip_min_seconds: float = Field(60.0, ge=1)
-    clip_max_seconds: float = Field(180.0, ge=1)
+    max_clips: int = Field(8, ge=1, le=50)
+    clip_min_seconds: float = Field(15.0, ge=1)
+    clip_max_seconds: float = Field(60.0, ge=1)
 
     subtitles_enabled: bool = Field(
         True,
@@ -84,7 +98,31 @@ class Settings(BaseSettings):
 
     subtitle_template: str = Field(
         "modern_karaoke",
-        description="Subtitle template: default|modern|karaoke|modern_karaoke|cinematic|cinematic_karaoke",
+        description=(
+            "Subtitle template: default|modern|karaoke|modern_karaoke|cinematic|cinematic_karaoke|"
+            "storytelling|podcast|motivation"
+        ),
+    )
+
+    subtitle_max_words_per_line: int = Field(
+        6,
+        ge=1,
+        le=12,
+        description="Max words per subtitle line (Part 4: 3–6 recommended)",
+    )
+
+    subtitle_max_chars_per_line: int = Field(
+        36,
+        ge=10,
+        le=80,
+        description="Max characters per subtitle line (Part 4: keep short for mobile)",
+    )
+
+    subtitle_clip_realign_enabled: bool = Field(
+        False,
+        description=(
+            "If true, run a best-effort per-clip word re-alignment pass (slower but can improve timing precision)"
+        ),
     )
 
     title_provider: str = Field(
@@ -124,9 +162,68 @@ class Settings(BaseSettings):
 
     target_fps: int = Field(30, ge=1, le=60)
 
+    # Part 8 — viral engine (render-time optimizations)
+    viral_engine_enabled: bool = Field(
+        True,
+        description="If true, apply viral editing optimizations (hook/zoom/text/emojis)",
+    )
+
+    viral_hook_window_seconds: float = Field(
+        3.0,
+        ge=0.5,
+        le=6.0,
+        description="How many seconds at the beginning to scan for a hook",
+    )
+
+    viral_hook_shift_max_seconds: float = Field(
+        2.0,
+        ge=0.0,
+        le=6.0,
+        description="Max seconds we are allowed to shift the clip start forward to land on a hook",
+    )
+
+    viral_hook_text_enabled: bool = Field(
+        True,
+        description="If true, add a short hook text overlay during the first seconds",
+    )
+
+    viral_emojis_enabled: bool = Field(
+        True,
+        description="If true, overlay brief emojis for high-signal keywords",
+    )
+
+    viral_max_emojis: int = Field(
+        6,
+        ge=0,
+        le=20,
+        description="Max number of emoji overlays per clip",
+    )
+
+    viral_zoom_intensity: float = Field(
+        0.06,
+        ge=0.0,
+        le=0.25,
+        description="Zoom intensity for punch/intro zoom (e.g. 0.06 = +6%)",
+    )
+
+    viral_effect_style: str = Field(
+        "subtle",
+        description="Viral effect style preset: subtle|strong",
+    )
+
     enable_loudnorm: bool = Field(
         False,
         description="If true, apply ffmpeg loudnorm to audio during render",
+    )
+
+    stabilization_enabled: bool = Field(
+        True,
+        description="If true, apply a conservative video stabilization filter during render (deshake)",
+    )
+
+    visual_enhance_enabled: bool = Field(
+        True,
+        description="If true, apply conservative contrast/saturation/sharpening for mobile-first output",
     )
 
     # Quality gate (Sprint 1): auto-correct subtitle placement if it overlaps faces/UI.
@@ -166,6 +263,36 @@ class Settings(BaseSettings):
     download_max_retries: int = Field(2, ge=0, le=10)
     download_retry_backoff_seconds: float = Field(1.0, ge=0)
 
+    pipeline_stage_max_retries: int = Field(
+        1,
+        ge=0,
+        le=3,
+        description="Max retries for transient failures within a pipeline stage (transcribe/align/render)",
+    )
+
+    pipeline_stage_retry_backoff_seconds: float = Field(
+        1.0,
+        ge=0,
+        description="Backoff (seconds) between pipeline stage retries",
+    )
+
+    audio_extract_normalize_enabled: bool = Field(
+        True,
+        description="If true, apply light normalization during audio extraction (pre-transcription)",
+    )
+
+    audio_extract_denoise_enabled: bool = Field(
+        True,
+        description="If true, apply light denoise/EQ during audio extraction (pre-transcription)",
+    )
+
+    audio_extract_max_retries: int = Field(1, ge=0, le=5)
+
+    transcript_cleanup_provider: str = Field(
+        "spellcheck",
+        description="Transcript cleanup provider: none|heuristic|spellcheck|openai",
+    )
+
     rq_job_timeout_seconds: int = Field(60 * 45, ge=60)
     rq_result_ttl_seconds: int = Field(60 * 60, ge=0)
 
@@ -173,6 +300,12 @@ class Settings(BaseSettings):
     metrics_enabled: bool = Field(True, description="Expose Prometheus metrics at /metrics")
     sentry_dsn: str = Field("", description="Sentry DSN (optional)")
     sentry_traces_sample_rate: float = Field(0.0, ge=0.0, le=1.0)
+
+    clip_service_base_url: str = Field(
+        "",
+        validation_alias="VIDEO_WORKER_CLIP_SERVICE_BASE_URL",
+        description="Optional external clip-service base URL (if set, render stage can be delegated)",
+    )
 
     log_level: str = Field("INFO")
 

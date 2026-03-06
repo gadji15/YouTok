@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\ProjectController;
+use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\WorkerCallbackController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -10,6 +11,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
+
+Route::middleware('internal.secret')->post('/uploads/video', [UploadController::class, 'video']);
 
 Route::middleware('internal.secret')->get('/projects', [ProjectController::class, 'index']);
 Route::middleware('internal.secret')->post('/projects', [ProjectController::class, 'store']);
@@ -19,6 +22,10 @@ Route::middleware('internal.secret')->delete('/projects/{project}', [ProjectCont
 Route::middleware('internal.secret')->get('/projects/{project}/artifacts/transcript', [\App\Http\Controllers\Api\ProjectAssetController::class, 'transcriptJson']);
 Route::middleware('internal.secret')->get('/projects/{project}/artifacts/subtitles', [\App\Http\Controllers\Api\ProjectAssetController::class, 'subtitlesSrt']);
 Route::middleware('internal.secret')->get('/projects/{project}/artifacts/clips', [\App\Http\Controllers\Api\ProjectAssetController::class, 'clipsJson']);
+Route::middleware('internal.secret')->get('/projects/{project}/artifacts/words', [\App\Http\Controllers\Api\ProjectAssetController::class, 'wordsJson']);
+Route::middleware('internal.secret')->get('/projects/{project}/artifacts/segments', [\App\Http\Controllers\Api\ProjectAssetController::class, 'segmentsJson']);
+Route::middleware('internal.secret')->get('/projects/{project}/artifacts/source-metadata', [\App\Http\Controllers\Api\ProjectAssetController::class, 'sourceMetadataJson']);
+Route::middleware('internal.secret')->get('/projects/{project}/artifacts/thumbnail', [\App\Http\Controllers\Api\ProjectAssetController::class, 'sourceThumbnail']);
 
 Route::middleware('internal.secret')->get('/tiktok-accounts', [\App\Http\Controllers\Api\TikTokAccountController::class, 'index']);
 

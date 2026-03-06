@@ -4,10 +4,15 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
         ffmpeg \
         gcc g++ \
         libglib2.0-0 \
         libgl1 \
+        fonts-dejavu-core \
+        fonts-noto-core \
+        fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
 
 ARG PYTORCH_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu

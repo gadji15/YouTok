@@ -107,7 +107,7 @@ export default async function ProjectDetailsPage({
     <div className="space-y-6">
       <PageHeader
         title={project.name}
-        description={project.youtube_url}
+        description={project.youtube_url ?? (project.source_type === 'local' ? 'Local video' : '')}
         actions={
           <>
             <Link
@@ -202,6 +202,26 @@ export default async function ProjectDetailsPage({
                 href={`/api/projects/${project.id}/artifacts/clips`}
                 label="clips.json"
                 enabled={Boolean(project.artifacts.clips_json_path)}
+              />
+              <ArtifactLink
+                href={`/api/projects/${project.id}/artifacts/words`}
+                label="words.json"
+                enabled={Boolean(project.artifacts.words_json_path)}
+              />
+              <ArtifactLink
+                href={`/api/projects/${project.id}/artifacts/segments`}
+                label="segments.json"
+                enabled={Boolean(project.artifacts.segments_json_path)}
+              />
+              <ArtifactLink
+                href={`/api/projects/${project.id}/artifacts/source-metadata`}
+                label="source_metadata.json"
+                enabled={Boolean(project.artifacts.source_metadata_json_path)}
+              />
+              <ArtifactLink
+                href={`/api/projects/${project.id}/artifacts/thumbnail`}
+                label="thumbnail.jpg"
+                enabled={Boolean(project.artifacts.source_thumbnail_path)}
               />
             </div>
           </CardContent>

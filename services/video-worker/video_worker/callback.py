@@ -26,6 +26,11 @@ class TitleCandidates(BaseModel):
     provider: str | None = None
     description: str | None = None
     hashtags: list[str] = Field(default_factory=list)
+
+    # Optional extended copywriting fields (Part 5).
+    hooks: list[str] = Field(default_factory=list)
+    analysis: dict | None = None
+
     candidates: list[TitleCandidate] = Field(default_factory=list)
     top3: list[str] = Field(default_factory=list)
 
@@ -55,6 +60,12 @@ class JobArtifacts(BaseModel):
     subtitles_srt_path: str | None = None
 
     clips_json_path: str | None = None
+
+    # Additional analysis artifacts (best-effort).
+    words_json_path: str | None = None
+    segments_json_path: str | None = None
+    source_metadata_json_path: str | None = None
+    source_thumbnail_path: str | None = None
 
     clips: list[ClipArtifact] = Field(default_factory=list)
 

@@ -53,6 +53,35 @@ class SecureAssetServingTest extends TestCase
             ->assertOk();
     }
 
+    public function test_admin_can_stream_clip_video_from_remote_url(): void
+    {
+        $email = 'admin@example.com';
+        config()->set('admin.emails', [$email]);
+
+        /** @var User $user */
+        $user = User::factory()->create([
+            'email' => $email,
+            'email_verified_at' => now(),
+        ]);
+
+        $project = Project::query()->create([
+            'name' => 'Test',
+            'youtube_url' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+            'status' => ProjectStatus::completed,
+        ]);
+
+        $clip = Clip::query()->create([
+            'project_id' => (string) $project->id,
+            'external_id' => 'c1',
+            'status' => ClipStatus::ready,
+            'video_path' => 'https://cdn.example.com/clip.mp4',
+        ]);
+
+        $this->actingAs($user)
+            ->get('/clips/'.(string) $clip->id.'/video')
+            ->assertRedirect('https://cdn.example.com/clip.mp4');
+    }
+
     public function test_admin_can_download_clip_srt_from_shared_storage_root(): void
     {
         $email = 'admin@example.com';

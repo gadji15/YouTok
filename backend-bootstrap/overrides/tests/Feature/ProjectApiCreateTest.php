@@ -28,8 +28,8 @@ class ProjectApiCreateTest extends TestCase
                 'youtube_url' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
                 'language' => 'fr',
                 'subtitles_enabled' => false,
-                'clip_min_seconds' => 60,
-                'clip_max_seconds' => 180,
+                'clip_min_seconds' => 15,
+                'clip_max_seconds' => 60,
                 'subtitle_template' => 'modern',
                 'segmentation_mode' => 'chapters',
                 'originality_mode' => 'voiceover',
@@ -43,8 +43,8 @@ class ProjectApiCreateTest extends TestCase
         $this->assertSame(ProjectStatus::queued, $project->status);
         $this->assertSame('fr', $project->language);
         $this->assertFalse($project->subtitles_enabled);
-        $this->assertSame(60, $project->clip_min_seconds);
-        $this->assertSame(180, $project->clip_max_seconds);
+        $this->assertSame(15, $project->clip_min_seconds);
+        $this->assertSame(60, $project->clip_max_seconds);
         $this->assertSame('modern', $project->subtitle_template);
         $this->assertSame('chapters', $project->segmentation_mode);
         $this->assertSame('voiceover', $project->originality_mode);
@@ -70,5 +70,41 @@ class ProjectApiCreateTest extends TestCase
                 'youtube_url' => 'https://example.com/watch?v=dQw4w9WgXcQ',
             ])
             ->assertUnprocessable();
+    }
+
+    public function test_internal_api_project_create_accepts_local_video_path(): void
+    {
+        config()->set('admin.internal_api_secret', 'test-secret');
+
+        // Prevent real worker submissions during tests.
+        Bus::fake();
+
+        $root = sys_get_temp_dir().DIRECTORY_SEPARATOR.'shared-root-'.\Illuminate\Support\Str::random(8);
+        @mkdir($root, 0777, true);
+        config()->set('admin.shared_storage_root', $root);
+
+        $path = $root.DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'uploads';
+        @mkdir($path, 0777, true);
+
+        $video = $path.DIRECTORY_SEPARATOR.'source.mp4';
+        file_put_contents($video, 'video');
+
+        $response = $this->withHeader('X-Internal-Secret', 'test-secret')
+            ->postJson('/api/projects', [
+                'name' => 'Local Test',
+                'local_video_path' => $video,
+            ])
+            ->assertCreated();
+
+        $projectId = (string) $response->json('id');
+
+        $project = Project::query()->findOrFail($projectId);
+        $this->assertSame('local', $project->source_type);
+        $this->assertNull($project->youtube_url);
+        $this->assertSame(realpath($video), realpath((string) $project->local_video_path));
+
+        Bus::assertDispatched(SubmitVideoWorkerJob::class, function (SubmitVideoWorkerJob $job) use ($projectId): bool {
+            return $job->projectId === $projectId;
+        });
     }
 }

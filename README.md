@@ -6,8 +6,8 @@ Plateforme SaaS (V1: usage interne / admin unique) qui transforme une vidéo You
 
 - **Frontend**: Next.js (standalone, BFF)
 - **Backend**: Laravel (scaffoldé automatiquement via `backend-bootstrap/`), Blade UI + auth (Breeze)
-- **DB**: MySQL (via Docker)
-- **Queue**: Laravel database queue
+- **DB**: MySQL ou Postgres (via Docker)
+- **Queue / Cache / Sessions**: Redis (Laravel)
 - **Video worker (optionnel)**: Python (FastAPI + RQ), yt-dlp, ffmpeg, Whisper
 - **TikTok bot (optionnel / Phase 3)**: Node.js + Playwright (squelette)
 
@@ -32,7 +32,18 @@ Prérequis: un DNS qui pointe `${DOMAIN}` vers la machine.
 cp .env.example .env
 # puis éditez .env (DOMAIN, ACME_EMAIL, APP_URL, secrets, mots de passe DB)
 
+# MySQL (par défaut)
 docker compose -f docker-compose.prod.yml up -d --build
+
+# Postgres (préféré)
+docker compose -f docker-compose.prod.yml -f docker-compose.prod.pgsql.yml up -d --build
+```
+
+Pour Postgres, ajoutez aussi dans `.env`:
+
+```env
+DB_CONNECTION=pgsql
+DB_PORT=5432
 ```
 
 Variables à définir (au minimum) dans `.env` en production:
@@ -40,7 +51,7 @@ Variables à définir (au minimum) dans `.env` en production:
 - `INTERNAL_API_SECRET` (doit être un secret long, non défaut)
 - `VIDEO_WORKER_CALLBACK_SECRET` (doit être un secret long, non défaut)
 - `ADMIN_PASSWORD` (ne doit pas rester `password`)
-- `DB_PASSWORD`, `DB_ROOT_PASSWORD`
+- `DB_PASSWORD` (et `DB_ROOT_PASSWORD` si vous utilisez MySQL)
 
 Identifiants admin (définis dans `.env`):
 - email: `ADMIN_EMAILS`

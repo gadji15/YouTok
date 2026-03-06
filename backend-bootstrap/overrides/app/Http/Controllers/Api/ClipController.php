@@ -110,12 +110,29 @@ class ClipController
     {
         $data = $request->validate([
             'tiktok_caption' => ['sometimes', 'nullable', 'string', 'max:2200'],
+            'title' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'hashtags' => ['sometimes', 'nullable', 'array', 'max:10'],
+            'hashtags.*' => ['string', 'max:50'],
         ]);
 
+        $updates = [];
+
         if (array_key_exists('tiktok_caption', $data)) {
-            $clip->forceFill([
-                'tiktok_caption' => $data['tiktok_caption'],
-            ])->save();
+            $updates['tiktok_caption'] = $data['tiktok_caption'];
+        }
+
+        if (array_key_exists('title', $data)) {
+            $updates['title'] = $data['title'];
+        }
+
+        if (array_key_exists('hashtags', $data)) {
+            $existingCandidates = is_array($clip->title_candidates) ? $clip->title_candidates : [];
+            $existingCandidates['hashtags'] = $data['hashtags'] ?? [];
+            $updates['title_candidates'] = $existingCandidates;
+        }
+
+        if (!empty($updates)) {
+            $clip->forceFill($updates)->save();
         }
 
         return $this->show($request, $clip->refresh());

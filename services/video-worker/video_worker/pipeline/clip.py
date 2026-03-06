@@ -4,6 +4,7 @@ from pathlib import Path
 
 import json
 import structlog
+import subprocess
 
 from ..utils.ffprobe import probe_video
 from ..utils.subprocess import run
@@ -13,6 +14,7 @@ from .subtitle_placement import SubtitlePlacement, choose_subtitle_placement, me
 from .subtitles import write_srt_for_clip, write_stylized_ass_for_clip, write_word_level_ass_for_clip
 from .types import ClipCandidate, TranscriptSegment, WordTiming
 from .word_alignment import approximate_words_from_segments
+from .viral_engine import write_viral_overlays_ass_for_clip
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -137,9 +139,14 @@ def render_clips(
     logger: structlog.BoundLogger,
     subtitles_enabled: bool = True,
     subtitle_template: str = "default",
+    subtitle_max_words_per_line: int = 6,
+    subtitle_max_chars_per_line: int = 36,
+    subtitle_clip_realign_enabled: bool = False,
     output_aspect: str = "vertical",
     target_fps: int = 30,
     enable_loudnorm: bool = False,
+    stabilization_enabled: bool = True,
+    visual_enhance_enabled: bool = True,
     word_timings: list[WordTiming] | None = None,
     word_timings_by_clip_id: dict[str, list[WordTiming]] | None = None,
     audio_override_by_clip_id: dict[str, Path] | None = None,
@@ -147,6 +154,14 @@ def render_clips(
     quality_gate_face_overlap_p95_threshold: float = 0.05,
     quality_gate_max_attempts: int = 2,
     ui_safe_ymin: float = 0.78,
+    # Part 8 — viral engine
+    viral_engine_enabled: bool = False,
+    viral_effect_style: str = "subtle",
+    viral_zoom_intensity: float = 0.06,
+    viral_hook_text_enabled: bool = True,
+    viral_emojis_enabled: bool = True,
+    viral_max_emojis: int = 6,
+    language: str | None = None,
 ) -> list[dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -229,6 +244,29 @@ def render_clips(
         out_srt = clip_dir / "subtitles.srt"
         out_ass = clip_dir / "subtitles.ass"
 
+        # Fast path for resumed jobs: if the final video and subtitle files exist,
+        # skip all expensive subtitle placement + alignment work.
+        if out_video.exists() and out_video.stat().st_size > 0:
+            subs_ok = True
+            if subtitles_enabled:
+                subs_ok = out_srt.exists() and out_srt.stat().st_size > 0 and out_ass.exists() and out_ass.stat().st_size > 0
+
+            if subs_ok:
+                rendered.append(
+                    {
+                        "clip_id": clip.clip_id,
+                        "start_seconds": clip.start_seconds,
+                        "end_seconds": clip.end_seconds,
+                        "score": clip.score,
+                        "reason": clip.reason,
+                        "title": getattr(clip, "title", None),
+                        "video_path": str(out_video),
+                        "subtitles_ass_path": str(out_ass) if (out_ass.exists() and out_ass.stat().st_size > 0) else None,
+                        "subtitles_srt_path": str(out_srt),
+                    }
+                )
+                continue
+
         clip_word_timings = (
             word_timings_by_clip_id.get(clip.clip_id)
             if word_timings_by_clip_id is not None and clip.clip_id in word_timings_by_clip_id
@@ -274,11 +312,9 @@ def render_clips(
                     logger=logger.bind(clip_id=clip.clip_id),
                 )
 
-        # Attempt to produce word-level timings and an ASS via the bundled tools.
-        # NOTE: This runs inside the worker image where the package lives at /app/video_worker.
-        # If clip audio is overridden (voiceover mode), skip this step (it would align against
-        # the original source audio and produce incorrect subtitles).
-        if clip_audio_override is None:
+        # Optional: best-effort per-clip re-alignment (Part 4).
+        # This is slower but can improve timing precision for word-level subtitles.
+        if subtitles_enabled and subtitle_clip_realign_enabled and clip_audio_override is None:
             try:
                 tools_dir = Path(__file__).resolve().parents[1] / "tools"
 
@@ -307,7 +343,6 @@ def render_clips(
                 ]
                 run(ff_args, logger=logger.bind(clip_id=clip.clip_id))
 
-                # run whisperx_align.py (best-effort)
                 wxa = tools_dir / "whisperx_align.py"
                 if wxa.exists():
                     run(
@@ -315,40 +350,49 @@ def render_clips(
                         logger=logger.bind(clip_id=clip.clip_id),
                     )
 
-                # If words.json produced, call make_ass to create an ASS file
-                mak = tools_dir / "make_ass.py"
-                if words_json.exists() and mak.exists():
-                    cmd = [
-                        "python3",
-                        str(mak),
-                        "--words",
-                        str(words_json),
-                        "--out",
-                        str(out_ass),
-                        "--video",
-                        str(source_video),
-                        "--play-res-x",
-                        str(play_res_x),
-                        "--play-res-y",
-                        str(play_res_y),
-                        "--template",
-                        str(subtitle_template),
-                        "--ui-safe-ymin",
-                        str(effective_ui_safe_ymin),
-                    ]
+                if words_json.exists() and words_json.stat().st_size > 0:
+                    raw = json.loads(words_json.read_text(encoding="utf-8"))
+                    if isinstance(raw, list):
+                        tool_words: list[WordTiming] = []
+                        for w in raw:
+                            if not isinstance(w, dict):
+                                continue
 
-                    if placement is not None:
-                        cmd += [
-                            "--an",
-                            str(placement.alignment),
-                            "--x",
-                            str(placement.x),
-                            "--y",
-                            str(placement.y),
-                        ]
+                            word = str(w.get("word") or "").strip()
+                            if not word:
+                                continue
 
-                    run(cmd, logger=logger.bind(clip_id=clip.clip_id))
-                    tool_ass_generated = out_ass.exists() and out_ass.stat().st_size > 0
+                            s = w.get("start_seconds")
+                            e = w.get("end_seconds")
+                            if s is None or e is None:
+                                continue
+
+                            tool_words.append(
+                                WordTiming(
+                                    word=word,
+                                    start_seconds=float(clip.start_seconds) + float(s),
+                                    end_seconds=float(clip.start_seconds) + float(e),
+                                    confidence=float(w.get("confidence")) if w.get("confidence") is not None else None,
+                                )
+                            )
+
+                        if tool_words:
+                            tool_words.sort(key=lambda x: (x.start_seconds, x.end_seconds))
+                            clip_word_timings = tool_words
+
+                            write_word_level_ass_for_clip(
+                                clip_start_seconds=clip.start_seconds,
+                                clip_end_seconds=clip.end_seconds,
+                                words=tool_words,
+                                output_path=out_ass,
+                                placement=(placement.alignment, placement.x, placement.y) if placement is not None else None,
+                                play_res_x=play_res_x,
+                                play_res_y=play_res_y,
+                                template=subtitle_template,
+                                max_words_per_line=subtitle_max_words_per_line,
+                                max_chars_per_line=subtitle_max_chars_per_line,
+                            )
+                            tool_ass_generated = out_ass.exists() and out_ass.stat().st_size > 0
             except Exception:
                 logger.exception("external_ass_generation_failed", clip_id=clip.clip_id)
 
@@ -407,6 +451,22 @@ def render_clips(
                     )
                     used_source = "stylized"
 
+            # Final safety net: never let rendering fail just because ASS generation failed.
+            if not (out_ass.exists() and out_ass.stat().st_size > 0):
+                try:
+                    write_stylized_ass_for_clip(
+                        clip_start_seconds=clip.start_seconds,
+                        clip_end_seconds=clip.end_seconds,
+                        segments=transcript_segments,
+                        output_path=out_ass,
+                        play_res_x=play_res_x,
+                        play_res_y=play_res_y,
+                        template=subtitle_template,
+                    )
+                    used_source = used_source + "_fallback_stylized"
+                except Exception:
+                    logger.exception("subtitles.ass_fallback_failed", clip_id=clip.clip_id)
+
             stats = _best_effort_log_ass_stats(ass_path=out_ass, clip_id=clip.clip_id, source=used_source)
 
             # Persist initial placement diagnostics for later QA / scoring.
@@ -458,7 +518,10 @@ def render_clips(
                         play_res_x=play_res_x,
                         play_res_y=play_res_y,
                         template=subtitle_template,
+                        max_words_per_line=subtitle_max_words_per_line,
+                        max_chars_per_line=subtitle_max_chars_per_line,
                     )
+                    used_source = "approximate"
                     _best_effort_log_ass_stats(
                         ass_path=out_ass,
                         clip_id=clip.clip_id,
@@ -475,7 +538,7 @@ def render_clips(
                     "reason": clip.reason,
                     "title": getattr(clip, "title", None),
                     "video_path": str(out_video),
-                    "subtitles_ass_path": str(out_ass) if subtitles_enabled else None,
+                    "subtitles_ass_path": str(out_ass) if (out_ass.exists() and out_ass.stat().st_size > 0) else None,
                     "subtitles_srt_path": str(out_srt),
                 }
             )
@@ -571,8 +634,109 @@ def render_clips(
                 f"fps={fps}",
             ]
 
-        if subtitles_enabled:
+        if stabilization_enabled:
+            # Prefer a higher-quality 2-pass stabilization when available:
+            # - pass 1: vidstabdetect writes transforms
+            # - pass 2: vidstabtransform applies them
+            # Fallback to deshake if vidstab isn't available or fails.
+
+            stab_trf = clip_dir / "stab.trf"
+
+            def _run_vidstab_detect() -> None:
+                # Analyze only the clip window to keep it fast.
+                # Use a reduced resolution for speed; this doesn't affect final quality.
+                args = [
+                    "ffmpeg",
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-ss",
+                    str(clip.start_seconds),
+                    "-i",
+                    str(source_video),
+                    "-t",
+                    str(duration),
+                    "-vf",
+                    "scale=640:-2,vidstabdetect=shakiness=6:accuracy=12:result=" + _ffmpeg_filter_escape_path(stab_trf),
+                    "-f",
+                    "null",
+                    "-",
+                ]
+                run(args, logger=logger.bind(clip_id=clip.clip_id, step="vidstabdetect"))
+
+            try:
+                if not stab_trf.exists() or stab_trf.stat().st_size <= 0:
+                    _run_vidstab_detect()
+
+                if stab_trf.exists() and stab_trf.stat().st_size > 0:
+                    vf_parts.append(
+                        "vidstabtransform=input="
+                        + _ffmpeg_filter_escape_path(stab_trf)
+                        + ":zoom=0:smoothing=18:optzoom=0"
+                    )
+                else:
+                    vf_parts.append("deshake=x=16:y=16:w=64:h=64:rx=16:ry=16:edge=mirror")
+            except Exception:
+                logger.exception("stabilization.vidstab_failed_fallback_deshake", clip_id=clip.clip_id)
+                vf_parts.append("deshake=x=16:y=16:w=64:h=64:rx=16:ry=16:edge=mirror")
+
+        if visual_enhance_enabled:
+            # Mobile-first, conservative enhancements.
+            vf_parts.append("eq=contrast=1.06:saturation=1.05:brightness=0.01")
+            vf_parts.append("unsharp=5:5:0.8:3:3:0.4")
+
+        if viral_engine_enabled and float(viral_zoom_intensity) > 0.0:
+            hook_score = 0.0
+            try:
+                if getattr(clip, "features", None) and isinstance(getattr(clip, "features"), dict):
+                    hook_score = float((clip.features or {}).get("hook_score") or 0.0)
+            except Exception:
+                hook_score = 0.0
+
+            # Apply a short intro zoom only when we have a strong hook.
+            if hook_score >= 0.62:
+                intensity = float(viral_zoom_intensity)
+                if (viral_effect_style or "").strip().lower() == "strong":
+                    intensity = min(0.25, intensity * 1.6)
+
+                rise = 0.35
+                fall = 1.25
+                z_peak = 1.0 + intensity
+                z_expr = (
+                    f"if(between(t,0,{rise}),1+{intensity}*(t/{rise}),"
+                    f"if(between(t,{rise},{fall}),{z_peak}-{intensity}*((t-{rise})/{(fall - rise)}),1))"
+                )
+
+                vf_parts.append(f"crop=w='iw/({z_expr})':h='ih/({z_expr})':x='(iw-w)/2':y='(ih-h)/2'")
+                vf_parts.append(f"scale={play_res_x}:{play_res_y}")
+
+        clip_subtitles_enabled = subtitles_enabled and out_ass.exists() and out_ass.stat().st_size > 0
+        if clip_subtitles_enabled:
             vf_parts.append(f"ass={_ffmpeg_filter_escape_path(out_ass)}")
+
+        overlay_ass_path = clip_dir / "viral_overlays.ass"
+        if viral_engine_enabled and (viral_hook_text_enabled or viral_emojis_enabled):
+            try:
+                if not overlay_ass_path.exists() or overlay_ass_path.stat().st_size <= 0:
+                    write_viral_overlays_ass_for_clip(
+                        clip_start_seconds=float(clip.start_seconds),
+                        clip_end_seconds=float(clip.end_seconds),
+                        transcript_segments=transcript_segments,
+                        word_timings=clip_word_timings,
+                        language=language,
+                        output_path=overlay_ass_path,
+                        play_res_x=play_res_x,
+                        play_res_y=play_res_y,
+                        hook_text_enabled=bool(viral_hook_text_enabled),
+                        emojis_enabled=bool(viral_emojis_enabled),
+                        max_emojis=int(viral_max_emojis),
+                    )
+            except Exception:
+                logger.exception("viral.overlays_ass_write_failed", clip_id=clip.clip_id)
+
+        if viral_engine_enabled and overlay_ass_path.exists() and overlay_ass_path.stat().st_size > 0:
+            vf_parts.append(f"ass={_ffmpeg_filter_escape_path(overlay_ass_path)}")
 
         # TikTok-friendly encode settings:
         # - Constant frame rate (CFR)
@@ -636,9 +800,9 @@ def render_clips(
                 "-crf",
                 "18",
                 "-maxrate",
-                "12M",
+                "10M",
                 "-bufsize",
-                "20M",
+                "12M",
                 "-x264-params",
                 f"keyint={gop}:min-keyint={gop}:scenecut=0",
                 "-c:a",
@@ -659,7 +823,7 @@ def render_clips(
         # Quality gate rerender loop: if subtitles overlap faces/UI on the final video,
         # regenerate the ASS with an alternative placement and re-render.
         attempt_placements: list[tuple[int, int, int]] = []
-        if subtitles_enabled and placement is not None:
+        if clip_subtitles_enabled and placement is not None:
             attempt_placements.append((placement.alignment, placement.x, placement.y))
 
             if quality_gate_enabled:
@@ -692,6 +856,8 @@ def render_clips(
                     play_res_x=play_res_x,
                     play_res_y=play_res_y,
                     template=subtitle_template,
+                    max_words_per_line=subtitle_max_words_per_line,
+                    max_chars_per_line=subtitle_max_chars_per_line,
                 )
                 return
 
@@ -706,6 +872,8 @@ def render_clips(
                     play_res_x=play_res_x,
                     play_res_y=play_res_y,
                     template=subtitle_template,
+                    max_words_per_line=subtitle_max_words_per_line,
+                    max_chars_per_line=subtitle_max_chars_per_line,
                 )
                 return
 
@@ -837,7 +1005,7 @@ def render_clips(
                 "reason": clip.reason,
                 "title": getattr(clip, "title", None),
                 "video_path": str(out_video),
-                "subtitles_ass_path": str(out_ass) if subtitles_enabled else None,
+                "subtitles_ass_path": str(out_ass) if (out_ass.exists() and out_ass.stat().st_size > 0) else None,
                 "subtitles_srt_path": str(out_srt),
             }
         )

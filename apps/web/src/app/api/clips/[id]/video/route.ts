@@ -10,7 +10,18 @@ export async function GET(
 
   const res = await laravelInternalFetch(`/api/clips/${encodeURIComponent(id)}/video`, {
     headers: range ? { range } : undefined,
+    redirect: 'manual',
   });
+
+  const location = res.headers.get('location');
+  if (location && res.status >= 300 && res.status < 400) {
+    return new Response(null, {
+      status: res.status,
+      headers: {
+        location,
+      },
+    });
+  }
 
   const headers: Record<string, string> = {
     'content-type': res.headers.get('content-type') ?? 'video/mp4',

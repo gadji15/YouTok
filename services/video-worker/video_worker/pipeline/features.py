@@ -9,6 +9,7 @@ from pathlib import Path
 @dataclass(frozen=True)
 class AudioWindowFeatures:
     rms: float
+    rms_std: float
     silence_ratio: float
 
 
@@ -56,23 +57,31 @@ def compute_audio_window_features(
         mean_sq = sum((x * x for x in arr)) / float(len(arr))
         rms = math.sqrt(mean_sq) / 32768.0
 
-        # Silence ratio over frames
+        # Silence ratio over frames + rough RMS variation (tone/energy dynamics)
         frame_len = max(1, int(frame_seconds * sr))
         silent_frames = 0
         frames = 0
+        frame_rms: list[float] = []
+
         for i in range(0, len(arr), frame_len):
             chunk = arr[i : i + frame_len]
             if not chunk:
                 continue
             mean_sq_c = sum((x * x for x in chunk)) / float(len(chunk))
             rms_c = math.sqrt(mean_sq_c) / 32768.0
+            frame_rms.append(float(rms_c))
             frames += 1
             if rms_c < silence_rms_threshold:
                 silent_frames += 1
 
         silence_ratio = (silent_frames / frames) if frames else 0.0
 
-        return AudioWindowFeatures(rms=float(rms), silence_ratio=float(silence_ratio))
+        rms_std = 0.0
+        if len(frame_rms) >= 2:
+            m = sum(frame_rms) / float(len(frame_rms))
+            rms_std = math.sqrt(sum(((x - m) ** 2 for x in frame_rms)) / float(len(frame_rms)))
+
+        return AudioWindowFeatures(rms=float(rms), rms_std=float(rms_std), silence_ratio=float(silence_ratio))
     except Exception:
         return None
 
