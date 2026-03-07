@@ -70,9 +70,20 @@ def upload_file_to_s3(*, local_path: Path, key: str) -> str:
         region_name=cfg.region or None,
     )
 
+    from botocore.config import Config
+
     client = session.client(
         "s3",
         endpoint_url=cfg.endpoint_url or None,
+        config=Config(
+            connect_timeout=10,
+            read_timeout=300,
+            retries={
+                "max_attempts": 3,
+                "mode": "standard",
+            },
+            max_pool_connections=10,
+        ),
     )
 
     client.upload_file(
