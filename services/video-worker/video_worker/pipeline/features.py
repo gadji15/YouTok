@@ -113,11 +113,12 @@ def compute_motion_score(
     if duration <= 0.1:
         return None
 
-    work_dir = video_path.parent / ".motion_score_tmp"
-    frames_dir = work_dir / "frames"
+    import uuid
 
-    if frames_dir.exists():
-        shutil.rmtree(frames_dir)
+    work_dir = video_path.parent / ".motion_score_tmp"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    frames_dir = work_dir / f"frames_{uuid.uuid4().hex}"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     try:
