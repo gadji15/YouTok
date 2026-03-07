@@ -111,7 +111,8 @@ upsert_env_kv() {
   local file="${3:-.env}"
 
   local tmp
-  tmp="$(mktemp)"
+  # Create tmp file in the same directory to avoid cross-filesystem rename issues on bind mounts.
+  tmp="$(mktemp ./.env.tmp.XXXXXX)"
 
   awk -v k="$key" -v v="$value" '
     BEGIN { done = 0 }
