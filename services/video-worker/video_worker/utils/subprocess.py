@@ -15,10 +15,11 @@ def run(
     heartbeat_callback=None,
     heartbeat_interval_seconds: float = 60.0,
     line_callback=None,
+    cancel_check=None,
 ) -> None:
     logger.info("exec", args=list(args), cwd=str(cwd) if cwd else None)
 
-    if heartbeat_callback is None and line_callback is None:
+    if heartbeat_callback is None and line_callback is None and cancel_check is None:
         try:
             subprocess.run(
                 list(args),
@@ -85,6 +86,27 @@ def run(
     while True:
         rc = proc.poll()
         now = time.time()
+
+        if cancel_check is not None:
+            try:
+                should_cancel = bool(cancel_check())
+            except Exception as e:
+                # If the cancel check raises (e.g. JobCancelledError), stop the process
+                # then propagate the original error.
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5.0)
+                except Exception:
+                    proc.kill()
+                raise e
+
+            if should_cancel:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5.0)
+                except Exception:
+                    proc.kill()
+                raise RuntimeError("cancelled")
 
         if heartbeat_callback is not None and now - last_beat >= float(heartbeat_interval_seconds):
             last_beat = now

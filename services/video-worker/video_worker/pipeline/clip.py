@@ -138,6 +138,7 @@ def render_clips(
     output_dir: Path,
     logger: structlog.BoundLogger,
     progress_callback=None,
+    cancel_check=None,
     subtitles_enabled: bool = True,
     subtitle_template: str = "default",
     subtitle_max_words_per_line: int = 6,
@@ -1074,6 +1075,7 @@ def render_clips(
                 heartbeat_callback=_hb,
                 heartbeat_interval_seconds=60.0,
                 line_callback=_on_line,
+                cancel_check=cancel_check,
             )
         else:
             ok = False

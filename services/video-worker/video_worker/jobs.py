@@ -1002,6 +1002,10 @@ def process_job(
                     logger=logger.bind(render_event=str(evt.get("event") or ""), clip_id=clip_id or None),
                 )
 
+            def _cancel_check() -> bool:
+                raise_if_cancelled()
+                return False
+
             return render_clips(
                 source_video=ctx.source_video_path,
                 transcript_segments=render_segments,
@@ -1009,6 +1013,7 @@ def process_job(
                 output_dir=ctx.clips_dir,
                 logger=logger,
                 progress_callback=_render_progress,
+                cancel_check=_cancel_check,
                 subtitles_enabled=effective_subtitles_enabled,
                 subtitle_template=effective_subtitle_template,
                 subtitle_max_words_per_line=settings.subtitle_max_words_per_line,

@@ -28,7 +28,12 @@ class SubmitVideoWorkerJob implements ShouldQueue
 
     public function handle(VideoWorkerClient $client): void
     {
-        $project = Project::query()->findOrFail($this->projectId);
+        $project = Project::query()->find($this->projectId);
+        if ($project === null) {
+            // The user may have deleted the project before the queue processed this job.
+            Log::info('worker.submit.skipped_project_deleted', ['project_id' => $this->projectId]);
+            return;
+        }
 
         PipelineEvent::log('worker.submit.started', project: $project);
         Log::info('worker.submit.started', ['project_id' => $project->id]);
