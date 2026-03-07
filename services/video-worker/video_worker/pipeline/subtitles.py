@@ -375,18 +375,6 @@ def write_word_level_ass_for_clip(
         if template == "cinematic":
             style_line = f"Style: Default,Noto Sans,{font_size},&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,7,1,2,120,120,170,1"
 
-    reading_outline = int(round(18 * float(play_res_y) / 1920.0))
-    reading_font_size = max(int(min_font_px), min(int(max_font_px), int(round(float(font_size) * 0.92))))
-
-    # Reading mode: centered with a semi-opaque box for long passages.
-    # BorderStyle=3 draws a rectangle behind the text; Outline acts as padding.
-    reading_style_line = (
-        f"Style: Reading,Noto Sans,{reading_font_size},"
-        "&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,"
-        "1,0,0,0,100,100,0,0,3,"
-        f"{reading_outline},0,5,0,0,0,1"
-    )
-
     header = "\n".join(
         [
             "[Script Info]",
@@ -399,7 +387,6 @@ def write_word_level_ass_for_clip(
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
             style_line,
-            reading_style_line,
             "",
             "[Events]",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -418,7 +405,7 @@ def write_word_level_ass_for_clip(
     else:
         pos_prefix = f"\\an{an}\\pos({px},{py})\\blur2"
 
-    reading_prefix = f"\\an5\\pos({play_res_x // 2},{int(round(float(play_res_y) * 0.52))})\\blur2\\fad(80,120)"
+    
 
     # Select words for the clip and shift times to clip-relative.
     clip_words: list[WordTiming] = []
@@ -807,9 +794,61 @@ def write_word_level_ass_for_clip(
         line1, line2 = _split_two_lines(parts_formatted, [len(p) for p in parts_plain])
         return line1, line2, False
 
-    def _emit_event(chunk: list[WordTiming]) -> tuple[float, float, str, str]:
+    def _wrap_tokens_px(
+        parts_formatted: list[str],
+        parts_plain: list[str],
+        *,
+        font_px: int,
+    ) -> list[list[str]]:
+        """Wrap tokens into N lines so each line stays within safe_width_px.
+
+        This is used as a last-resort overflow guard while keeping the same subtitle style
+        (no "Reading" style). It may produce >2 lines in extreme cases.
+        """
+
+        if not parts_formatted:
+            return []
+
+        expanded_formatted: list[str] = []
+        expanded_plain: list[str] = []
+
+        for pf, pp in zip(parts_formatted, parts_plain):
+            if _measure_line_width_px([pp], font_px=font_px) <= safe_width_px:
+                expanded_formatted.append(pf)
+                expanded_plain.append(pp)
+                continue
+
+            chunks = _split_plain_token_to_fit(token=pp, font_px=font_px)
+            expanded_formatted.extend(chunks)
+            expanded_plain.extend(chunks)
+
+        lines: list[list[str]] = []
+        cur: list[str] = []
+        cur_plain: list[str] = []
+
+        for pf, pp in zip(expanded_formatted, expanded_plain):
+            if not cur:
+                cur = [pf]
+                cur_plain = [pp]
+                continue
+
+            cand_plain = cur_plain + [pp]
+            if _measure_line_width_px(cand_plain, font_px=font_px) <= safe_width_px:
+                cur.append(pf)
+                cur_plain.append(pp)
+            else:
+                lines.append(cur)
+                cur = [pf]
+                cur_plain = [pp]
+
+        if cur:
+            lines.append(cur)
+
+        return lines
+
+    def _emit_event(chunk: list[WordTiming]) -> list[tuple[float, float, str, str]]:
         if not chunk:
-            return 0.0, 0.01, "Default", ""
+            return []
 
         chunk = sorted(chunk, key=lambda x: (x.start_seconds, x.end_seconds))
         start = min(w.start_seconds for w in chunk)
@@ -850,7 +889,6 @@ def write_word_level_ass_for_clip(
         parts_plain = [strip_ass_tags(p) for p in parts_formatted]
 
         chosen_font_px = int(font_size)
-        reading_mode = False
 
         if font_path is not None:
             line1, line2, fits = _split_two_lines_px(
@@ -872,65 +910,29 @@ def write_word_level_ass_for_clip(
                 )
 
             if not fits:
-                reading_mode = True
+                # Last resort: keep the same "Default" style (no reading-style box), but
+                # split the chunk into multiple events and/or extra lines so we never overflow.
+                if len(chunk) > 1:
+                    mid = max(1, len(chunk) // 2)
+                    return _emit_event(chunk[:mid]) + _emit_event(chunk[mid:])
+
+                # Single long token: wrap into multiple lines (may exceed 2) but still keep style.
+                wrapped = _wrap_tokens_px(parts_formatted, parts_plain, font_px=chosen_font_px)
+                if rtl_enabled:
+                    lines_str = [
+                        prepare_text_for_ass(_join_tokens([strip_ass_tags(p) for p in ln]), rtl=True)
+                        for ln in wrapped
+                        if ln
+                    ]
+                    text = "\\N".join([ln for ln in lines_str if ln.strip()])
+                else:
+                    text = "\\N".join([_join_tokens(ln) for ln in wrapped if ln])
+
+                payload = "{" + pos_prefix + f"\\fs{chosen_font_px}" + "}" + text
+                return [(start, end, "Default", payload)]
         else:
             lens = [len(p) for p in parts_plain]
             line1, line2 = _split_two_lines(parts_formatted, lens)
-
-        if reading_mode:
-            local_cinematic = False
-
-            # Never increase font size when switching to reading mode.
-            chosen_font_px = min(int(chosen_font_px), int(reading_font_size))
-
-            tokens: list[str] = []
-
-            for w in chunk:
-                tok = w.word
-                if _measure_line_width_px([tok], font_px=chosen_font_px) <= safe_width_px:
-                    tokens.append(tok)
-                    continue
-
-                chunks = _split_plain_token_to_fit(token=tok, font_px=chosen_font_px)
-                if not chunks:
-                    continue
-
-                # Ensure split chunks behave like one word (no spaces between chunks).
-                tokens.append(chunks[0].lstrip(_NOSPACE_MARK))
-                for c in chunks[1:]:
-                    tokens.append(_NOSPACE_MARK + c.lstrip(_NOSPACE_MARK))
-
-            lines: list[str] = []
-            cur = ""
-
-            for tok in tokens:
-                if not tok:
-                    continue
-
-                no_space = tok.startswith(_NOSPACE_MARK)
-                raw = tok[len(_NOSPACE_MARK) :] if no_space else tok
-
-                if not cur:
-                    cur = raw
-                    continue
-
-                cand = cur + ("" if no_space else " ") + raw
-                if _measure_line_width_px([cand], font_px=chosen_font_px) <= safe_width_px:
-                    cur = cand
-                else:
-                    lines.append(cur)
-                    cur = raw
-
-            if cur:
-                lines.append(cur)
-
-            if rtl_enabled:
-                lines = [prepare_text_for_ass(ln, rtl=True) for ln in lines if ln.strip()]
-
-            text = "\\N".join([ln for ln in lines if ln.strip()])
-
-            payload = "{" + reading_prefix + f"\\fs{chosen_font_px}" + "}" + text
-            return start, end, "Reading", payload
 
         if rtl_enabled:
             l1 = prepare_text_for_ass(_join_tokens([strip_ass_tags(p) for p in line1]), rtl=True) if line1 else ""
@@ -946,7 +948,7 @@ def write_word_level_ass_for_clip(
             text = "{\\t(0,120,\\fscx105\\fscy105)}" + text
 
         payload = "{" + pos_prefix + f"\\fs{chosen_font_px}" + "}" + text
-        return start, end, "Default", payload
+        return [(start, end, "Default", payload)]
 
     max_words_per_event = max_words_per_line * 2
     max_chars_per_event = max_chars_per_line * 2
@@ -996,17 +998,17 @@ def write_word_level_ass_for_clip(
 
     events: list[str] = []
     for chunk in chunks:
-        start, end, style, payload = _emit_event(chunk)
-        if not payload:
-            continue
+        for start, end, style, payload in _emit_event(chunk):
+            if not payload:
+                continue
 
-        events.append(
-            "Dialogue: 0,{},{},{},N,0,0,0,,{}".format(
-                _ass_ts(start),
-                _ass_ts(end),
-                style,
-                payload,
+            events.append(
+                "Dialogue: 0,{},{},{},N,0,0,0,,{}".format(
+                    _ass_ts(start),
+                    _ass_ts(end),
+                    style,
+                    payload,
+                )
             )
-        )
 
     atomic_write_text(output_path, header + "\n" + "\n".join(events) + "\n")
