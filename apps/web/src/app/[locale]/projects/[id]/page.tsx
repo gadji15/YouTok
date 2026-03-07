@@ -20,6 +20,7 @@ import { PageHeader } from "@/ui/shell/PageHeader";
 import { PipelineProgress } from "@/ui/shell/PipelineProgress";
 
 import { DeleteProjectButton } from "./ui/DeleteProjectButton";
+import { ProjectTracePanel } from "./ui/ProjectTracePanel";
 
 type ProjectStatus = ApiProjectStatus;
 
@@ -229,30 +230,19 @@ export default async function ProjectDetailsPage({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("events.title")}</CardTitle>
-            <CardDescription>{t("events.subtitle")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {events.length === 0 ? (
-              <div className="text-sm text-[var(--text-muted)]">{t("events.empty")}</div>
-            ) : (
-              <div className="space-y-3">
-                {events.map((e, idx) => (
-                  <div key={idx} className="flex gap-3">
-                    <div className="w-14 shrink-0 text-xs font-medium text-[var(--text-muted)]">
-                      {e.ts}
-                    </div>
-                    <div className="min-w-0 flex-1 rounded-lg border border-[color:var(--border)] bg-[var(--surface)] p-3 text-sm text-[var(--text-muted)]">
-                      {e.message}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <ProjectTracePanel
+          projectId={project.id}
+          initial={{
+            status: project.status,
+            stage: project.stage,
+            progress_percent: project.progress_percent,
+            updated_at: project.updated_at,
+            last_log_message: project.last_log_message,
+            error: project.error,
+            events: project.events,
+            clips: project.clips,
+          }}
+        />
 
         <Card>
           <CardHeader>
