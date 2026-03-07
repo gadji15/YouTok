@@ -2,6 +2,8 @@ x-backend-env: &backend_env
   APP_ENV: ${APP_ENV:-local}
   APP_DEBUG: ${APP_DEBUG:-true}
   APP_URL: ${APP_URL:-http://localhost:8080}
+  # Provide APP_KEY via container env as a fallback when bind-mounts prevent persisting backend/.env edits.
+  APP_KEY: ${APP_KEY:-}
 
   # Ensure tools like "artisan tinker" can write their config/cache
   HOME: /tmp

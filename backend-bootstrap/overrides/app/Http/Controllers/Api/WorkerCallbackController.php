@@ -9,6 +9,7 @@ use App\Enums\ProjectStatus;
 use App\Models\Clip;
 use App\Models\PipelineEvent;
 use App\Models\Project;
+use App\Services\VideoWorkerClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -91,6 +92,18 @@ class WorkerCallbackController
                 'stage' => $payload['stage'] ?? null,
                 'progress_percent' => $payload['progress_percent'] ?? null,
             ]);
+
+            // Best-effort cancellation: if the project no longer exists, stop wasting worker capacity.
+            try {
+                app(VideoWorkerClient::class)->cancelJob((string) $payload['job_id']);
+            } catch (\Throwable $e) {
+                Log::warning('worker.callback.cancel_failed', [
+                    'project_id' => $payload['project_id'],
+                    'job_id' => $payload['job_id'],
+                    'exception' => $e::class,
+                    'message' => $e->getMessage(),
+                ]);
+            }
 
             return response()->json(['ok' => true]);
         }

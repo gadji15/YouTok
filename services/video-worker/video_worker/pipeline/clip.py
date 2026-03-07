@@ -137,6 +137,8 @@ def render_clips(
     clips: list[ClipCandidate],
     output_dir: Path,
     logger: structlog.BoundLogger,
+    progress_callback=None,
+    cancel_check=None,
     subtitles_enabled: bool = True,
     subtitle_template: str = "default",
     subtitle_max_words_per_line: int = 6,
@@ -251,7 +253,24 @@ def render_clips(
     is_source_aspect = effective_output_aspect == "source"
 
     # Vertical (9:16) is the default TikTok-ready output
-    for clip in clips:
+    total = max(1, len(clips))
+    for idx, clip in enumerate(clips, start=1):
+        if progress_callback is not None:
+            try:
+                progress_callback(
+                    {
+                        "event": "render.clip.started",
+                        "clip_id": clip.clip_id,
+                        "index": idx,
+                        "total": total,
+                        "start_seconds": float(clip.start_seconds),
+                        "end_seconds": float(clip.end_seconds),
+                        "duration_seconds": float(max(0.0, clip.end_seconds - clip.start_seconds)),
+                    }
+                )
+            except Exception:
+                pass
+
         clip_dir = output_dir / clip.clip_id
         clip_dir.mkdir(parents=True, exist_ok=True)
 
@@ -557,6 +576,22 @@ def render_clips(
                     "subtitles_srt_path": str(out_srt),
                 }
             )
+
+            if progress_callback is not None:
+                try:
+                    progress_callback(
+                        {
+                            "event": "render.clip.completed",
+                            "clip_id": clip.clip_id,
+                            "index": idx,
+                            "total": total,
+                            "cached": True,
+                            "video_path": str(out_video),
+                        }
+                    )
+                except Exception:
+                    pass
+
             continue
 
         duration = max(0.0, clip.end_seconds - clip.start_seconds)
@@ -809,13 +844,28 @@ def render_clips(
         # - Keep bitrate reasonable to avoid extra aggressive recompression
         gop = int(max(1, fps * 2))
 
-        def _build_ffmpeg_args(*, vf: str) -> list[str]:
+        def _build_ffmpeg_args(*, vf: str, progress_mode: bool = False) -> list[str]:
             ffmpeg_args: list[str] = [
                 "ffmpeg",
                 "-y",
                 "-hide_banner",
-                "-loglevel",
-                "error",
+            ]
+
+            if progress_mode:
+                ffmpeg_args += [
+                    "-loglevel",
+                    "error",
+                    "-nostats",
+                    "-progress",
+                    "pipe:1",
+                ]
+            else:
+                ffmpeg_args += [
+                    "-loglevel",
+                    "error",
+                ]
+
+            ffmpeg_args += [
                 "-ss",
                 str(ffmpeg_start_seconds),
                 "-i",
@@ -956,10 +1006,78 @@ def render_clips(
         attempts_log: list[dict] = []
 
         # Always render at least once.
-        if not attempt_placements:
+        # If the quality gate is disabled, skip the expensive overlap measurement pass.
+        if not attempt_placements or not quality_gate_enabled:
             vf_once = list(vf_parts)
-            ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once))
-            run(ffmpeg_args, logger=logger.bind(clip_id=clip.clip_id, attempt=1))
+            ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once), progress_mode=True)
+
+            running_seconds = 0.0
+
+            def _hb(meta: dict) -> None:
+                nonlocal running_seconds
+                running_seconds = float(meta.get("running_seconds") or 0.0)
+
+                if progress_callback is None:
+                    return
+                progress_callback(
+                    {
+                        "event": "render.clip.heartbeat",
+                        "clip_id": clip.clip_id,
+                        "index": idx,
+                        "total": total,
+                        "running_seconds": running_seconds,
+                        "attempt": 1,
+                    }
+                )
+
+            clip_total_us = int(round(float(duration) * 1_000_000.0))
+
+            def _on_line(which: str, line: str) -> None:
+                if progress_callback is None:
+                    return
+                if which != "stdout":
+                    return
+
+                s = line.strip()
+                if not s:
+                    return
+
+                if "=" not in s:
+                    return
+
+                k, v = s.split("=", 1)
+                if k == "out_time_us":
+                    try:
+                        out_us = int(v)
+                    except Exception:
+                        return
+
+                    if clip_total_us <= 0:
+                        return
+
+                    frac = max(0.0, min(1.0, float(out_us) / float(clip_total_us)))
+                    progress_callback(
+                        {
+                            "event": "render.clip.progress",
+                            "clip_id": clip.clip_id,
+                            "index": idx,
+                            "total": total,
+                            "attempt": 1,
+                            "running_seconds": running_seconds,
+                            "out_time_us": out_us,
+                            "duration_us": clip_total_us,
+                            "progress": frac,
+                        }
+                    )
+
+            run(
+                ffmpeg_args,
+                logger=logger.bind(clip_id=clip.clip_id, attempt=1),
+                heartbeat_callback=_hb,
+                heartbeat_interval_seconds=60.0,
+                line_callback=_on_line,
+                cancel_check=cancel_check,
+            )
         else:
             ok = False
             last_face95 = 0.0
@@ -973,9 +1091,74 @@ def render_clips(
 
                 vf_once = list(vf_parts)
 
-                ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once))
+                ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once), progress_mode=True)
 
-                run(ffmpeg_args, logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx))
+                running_seconds = 0.0
+
+                def _hb(meta: dict) -> None:
+                    nonlocal running_seconds
+                    running_seconds = float(meta.get("running_seconds") or 0.0)
+
+                    if progress_callback is None:
+                        return
+                    progress_callback(
+                        {
+                            "event": "render.clip.heartbeat",
+                            "clip_id": clip.clip_id,
+                            "index": idx,
+                            "total": total,
+                            "running_seconds": running_seconds,
+                            "attempt": attempt_idx,
+                        }
+                    )
+
+                clip_total_us = int(round(float(duration) * 1_000_000.0))
+
+                def _on_line(which: str, line: str) -> None:
+                    if progress_callback is None:
+                        return
+                    if which != "stdout":
+                        return
+
+                    s = line.strip()
+                    if not s:
+                        return
+
+                    if "=" not in s:
+                        return
+
+                    k, v = s.split("=", 1)
+                    if k == "out_time_us":
+                        try:
+                            out_us = int(v)
+                        except Exception:
+                            return
+
+                        if clip_total_us <= 0:
+                            return
+
+                        frac = max(0.0, min(1.0, float(out_us) / float(clip_total_us)))
+                        progress_callback(
+                            {
+                                "event": "render.clip.progress",
+                                "clip_id": clip.clip_id,
+                                "index": idx,
+                                "total": total,
+                                "attempt": attempt_idx,
+                                "running_seconds": running_seconds,
+                                "out_time_us": out_us,
+                                "duration_us": clip_total_us,
+                                "progress": frac,
+                            }
+                        )
+
+                run(
+                    ffmpeg_args,
+                    logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx),
+                    heartbeat_callback=_hb,
+                    heartbeat_interval_seconds=60.0,
+                    line_callback=_on_line,
+                )
 
                 try:
                     face95, ui95 = measure_overlap_p95_for_video(
@@ -1018,12 +1201,12 @@ def render_clips(
                     }
                 )
 
-                if not quality_gate_enabled or passed:
+                if passed:
                     ok = True
                     break
 
             # If quality gate is enabled and we still failed, keep the last render but record failure.
-            if quality_gate_enabled and not ok:
+            if not ok:
                 logger.warning(
                     "subtitles.quality_gate_failed",
                     clip_id=clip.clip_id,
@@ -1074,5 +1257,20 @@ def render_clips(
                 "subtitles_srt_path": str(out_srt),
             }
         )
+
+        if progress_callback is not None:
+            try:
+                progress_callback(
+                    {
+                        "event": "render.clip.completed",
+                        "clip_id": clip.clip_id,
+                        "index": idx,
+                        "total": total,
+                        "cached": False,
+                        "video_path": str(out_video),
+                    }
+                )
+            except Exception:
+                pass
 
     return rendered

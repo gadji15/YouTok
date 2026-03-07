@@ -15,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Str;
 
 class ProjectController
 {
@@ -158,6 +159,7 @@ class ProjectController
             'progress_percent' => $project->progress_percent,
             'last_log_message' => $project->last_log_message,
             'error' => $project->error,
+            'worker_job_id' => $project->worker_job_id,
 
             'options' => [
                 'language' => $project->language,
@@ -220,6 +222,77 @@ class ProjectController
 
             'created_at' => $project->created_at?->toISOString(),
             'updated_at' => $project->updated_at?->toISOString(),
+        ]);
+    }
+
+    public function debug(Request $request, Project $project): JsonResponse
+    {
+        $project->load([
+            'clips' => static fn ($query) => $query->orderBy('start_seconds')->orderBy('created_at'),
+            'pipelineEvents' => static fn ($query) => $query->latest()->limit(500),
+        ]);
+
+        $logPath = storage_path('logs/laravel.log');
+        $logTail = null;
+
+        if (is_string($logPath) && file_exists($logPath) && is_file($logPath)) {
+            // Keep payload small but useful.
+            $maxBytes = 220_000;
+            $size = filesize($logPath);
+
+            if (is_int($size) && $size > 0) {
+                $fp = fopen($logPath, 'rb');
+                if (is_resource($fp)) {
+                    try {
+                        $offset = max(0, $size - $maxBytes);
+                        fseek($fp, $offset);
+                        $raw = stream_get_contents($fp);
+                        if (is_string($raw)) {
+                            // If we seeked into the middle of a line, drop the first partial line.
+                            $raw = Str::after($raw, "\n");
+                            $logTail = $raw;
+                        }
+                    } finally {
+                        fclose($fp);
+                    }
+                }
+            }
+        }
+
+        return response()->json([
+            'project' => [
+                'id' => (string) $project->id,
+                'name' => $project->name,
+                'status' => $project->status->value,
+                'stage' => $project->stage,
+                'progress_percent' => $project->progress_percent,
+                'worker_job_id' => $project->worker_job_id,
+                'last_log_message' => $project->last_log_message,
+                'error' => $project->error,
+                'updated_at' => $project->updated_at?->toISOString(),
+                'created_at' => $project->created_at?->toISOString(),
+            ],
+            'clips' => $project->clips->map(static function (\App\Models\Clip $clip): array {
+                return [
+                    'id' => (string) $clip->id,
+                    'external_id' => $clip->external_id,
+                    'status' => $clip->status->value,
+                    'start_seconds' => $clip->start_seconds,
+                    'end_seconds' => $clip->end_seconds,
+                    'title' => $clip->title,
+                    'video_path' => $clip->video_path,
+                ];
+            })->values(),
+            'events' => $project->pipelineEvents->map(static function (PipelineEvent $event): array {
+                return [
+                    'id' => (string) $event->id,
+                    'type' => $event->type,
+                    'message' => $event->message,
+                    'payload' => $event->payload,
+                    'created_at' => $event->created_at?->toISOString(),
+                ];
+            })->values(),
+            'laravel_log_tail' => $logTail,
         ]);
     }
 

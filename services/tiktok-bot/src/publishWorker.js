@@ -35,6 +35,24 @@ function createPublishProcessor() {
           caption: data.caption,
           accountId: data.accountId,
           artifactDir: jobDir,
+          options: data.options,
+        });
+
+        await writeJson(path.join(jobDir, 'result.json'), { ok: true, result });
+
+        logger.info({ job_id: jobId, took_ms: Date.now() - startedAt }, 'publish.done');
+        return result;
+      }
+
+      if (mode === 'tiktok_api') {
+        const { publishClipViaApi } = require('./tiktokApi/publishClip');
+
+        const result = await publishClipViaApi({
+          clipPath: data.clipPath,
+          caption: data.caption,
+          accountId: data.accountId,
+          artifactDir: jobDir,
+          options: data.options,
         });
 
         await writeJson(path.join(jobDir, 'result.json'), { ok: true, result });

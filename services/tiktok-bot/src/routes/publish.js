@@ -14,7 +14,15 @@ function createPublishRouter({ queues }) {
   const router = express.Router();
 
   router.post('/publish', async (req, res) => {
-    const { clip_path: clipPath, caption, account_id: accountId } = req.body || {};
+    const {
+      clip_path: clipPath,
+      caption,
+      account_id: accountId,
+      privacy,
+      allow_comments: allowComments,
+      allow_duet: allowDuet,
+      allow_stitch: allowStitch,
+    } = req.body || {};
 
     if (!isNonEmptyString(clipPath) || !isNonEmptyString(caption) || !isNonEmptyString(accountId)) {
       return res.status(400).json({
@@ -48,10 +56,26 @@ function createPublishRouter({ queues }) {
       }
     }
 
+    const options = {};
+
+    if (isNonEmptyString(privacy)) {
+      options.privacy = privacy.toLowerCase();
+    }
+    if (typeof allowComments === 'boolean') {
+      options.allowComments = allowComments;
+    }
+    if (typeof allowDuet === 'boolean') {
+      options.allowDuet = allowDuet;
+    }
+    if (typeof allowStitch === 'boolean') {
+      options.allowStitch = allowStitch;
+    }
+
     const job = await queues.enqueuePublish({
       clipPath: resolvedClipPath,
       caption,
       accountId,
+      options,
     });
 
     return res.status(202).json({

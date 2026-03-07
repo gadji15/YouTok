@@ -11,7 +11,7 @@ from video_worker.pipeline.types import ClipCandidate, TranscriptSegment
 def test_render_clips_builds_filters_for_stabilization_and_visual_enhance(monkeypatch, tmp_path: Path) -> None:
     calls: list[list[str]] = []
 
-    def fake_run(args, logger=None):
+    def fake_run(args, logger=None, **_kwargs):
         calls.append([str(a) for a in args])
 
         # Simulate vidstabdetect output.

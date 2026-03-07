@@ -118,6 +118,7 @@ export type ApiProjectDetail = {
   progress_percent: number | null;
   last_log_message: string | null;
   error: string | null;
+  worker_job_id: string | null;
 
   options: ApiProjectOptions;
   artifacts: ApiProjectArtifacts;

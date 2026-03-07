@@ -1,0 +1,8 @@
+{
+  "ok": false,
+  "error": {
+    "name": "Error",
+    "message": "not_logged_in: TikTok appears to require login (refresh storageState)",
+    "stack": "Error: not_logged_in: TikTok appears to require login (refresh storageState)\n    at publishClip (/app/src/playwright/publishClip.js:151:19)\n    at async processPublishJob (/app/src/publishWorker.js:33:24)\n    at async /app/node_modules/bullmq/dist/cjs/classes/worker.js:570:32"
+  }
+}

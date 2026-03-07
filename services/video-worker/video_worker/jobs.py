@@ -845,9 +845,12 @@ def process_job(
                 base = settings.clip_service_base_url.strip().rstrip("/")
 
                 payload = {
+                    "job_id": ctx.job_id,
+                    "project_id": ctx.project_id,
+                    "callback_url": ctx.callback_url,
+                    "callback_secret": ctx.callback_secret,
                     "source_video_path": str(ctx.source_video_path),
                     "output_dir": str(ctx.clips_dir),
-                    "language": language,
                     "clips": [
                         {
                             "clip_id": c.clip_id,
@@ -920,7 +923,7 @@ def process_job(
                         res = client.post(base + "/render", json=payload)
                         try:
                             res.raise_for_status()
-                        except httpx.HTTPStatusError:
+                        except httpx.HTTPStatusError as e:
                             detail = None
                             try:
                                 j = res.json()
@@ -928,6 +931,9 @@ def process_job(
                                     detail = j.get("detail")
                             except Exception:
                                 detail = None
+
+                            if res.status_code == 409 and str(detail or "") == "cancelled":
+                                raise JobCancelledError("job cancelled")
 
                             logger.error(
                                 "clip_service.render_failed",
@@ -951,12 +957,69 @@ def process_job(
                         base_url=base,
                     )
 
+            def _render_progress(evt: dict) -> None:
+                clip_id = str(evt.get("clip_id") or "")
+                idx = int(evt.get("index") or 0)
+                total = int(evt.get("total") or 0)
+
+                ev = str(evt.get("event") or "")
+
+                # Render is the longest stage. Emit granular progress to help debug stalls.
+                if ev == "render.clip.progress":
+                    running = float(evt.get("running_seconds") or 0.0)
+                    frac = float(evt.get("progress") or 0.0)
+                    pct = int(round(frac * 100.0))
+                    msg = (
+                        f"Rendering clip {idx}/{total} ({clip_id}) — {pct}%"
+                        + (f" ({int(running)}s)" if running > 0 else "")
+                        if clip_id
+                        else f"Rendering clip {idx}/{total} — {pct}%" + (f" ({int(running)}s)" if running > 0 else "")
+                    )
+                elif ev == "render.clip.heartbeat":
+                    running = float(evt.get("running_seconds") or 0.0)
+                    msg = (
+                        f"Rendering clip {idx}/{total} ({clip_id}) — still running ({int(running)}s)"
+                        if clip_id
+                        else f"Rendering clip {idx}/{total} — still running ({int(running)}s)"
+                    )
+                else:
+                    msg = f"Rendering clip {idx}/{total} ({clip_id})" if clip_id else f"Rendering clip {idx}/{total}"
+
+                # Map within [90..99] so overall job progress stays monotonic.
+                # If we have ffmpeg per-clip progress, refine within the current clip.
+                base = 90
+                if total > 0 and idx > 0:
+                    base = 90 + int(round(9.0 * min(1.0, max(0.0, float((idx - 1)) / float(total)))))
+
+                pct = base
+                if ev == "render.clip.progress" and total > 0:
+                    frac = float(evt.get("progress") or 0.0)
+                    pct = min(99, max(base, base + int(round(9.0 * min(1.0, max(0.0, frac)) / float(total)))))
+
+                # Include the raw event in the message for later inspection.
+                _best_effort_progress_callback(
+                    ctx=ctx,
+                    stage="render_clips",
+                    progress_percent=pct,
+                    message=msg,
+                    timeout_seconds=settings.callback_timeout_seconds,
+                    max_retries=settings.callback_max_retries,
+                    retry_backoff_seconds=settings.callback_retry_backoff_seconds,
+                    logger=logger.bind(render_event=str(evt.get("event") or ""), clip_id=clip_id or None),
+                )
+
+            def _cancel_check() -> bool:
+                raise_if_cancelled()
+                return False
+
             return render_clips(
                 source_video=ctx.source_video_path,
                 transcript_segments=render_segments,
                 clips=clips,
                 output_dir=ctx.clips_dir,
                 logger=logger,
+                progress_callback=_render_progress,
+                cancel_check=_cancel_check,
                 subtitles_enabled=effective_subtitles_enabled,
                 subtitle_template=effective_subtitle_template,
                 subtitle_max_words_per_line=settings.subtitle_max_words_per_line,
