@@ -147,11 +147,39 @@ export function ProjectTracePanel({
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setAutoRefresh((v) => !v)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setAutoRefresh((v) => !v)}
+            >
               {autoRefresh ? 'Auto: ON' : 'Auto: OFF'}
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => void refreshOnce()} disabled={loading}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void refreshOnce()}
+              disabled={loading}
+            >
               {loading ? 'Refresh…' : 'Refresh'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={async () => {
+                try {
+                  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/debug`, {
+                    method: 'GET',
+                    cache: 'no-store',
+                  });
+                  const text = await res.text();
+                  await navigator.clipboard.writeText(text);
+                  setLastError(null);
+                } catch (err) {
+                  setLastError(err instanceof Error ? err.message : 'Failed to copy debug');
+                }
+              }}
+            >
+              Copy debug
             </Button>
           </div>
         </div>
