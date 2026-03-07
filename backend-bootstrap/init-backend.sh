@@ -224,6 +224,16 @@ if ! grep -q "^APP_KEY=" .env || [ "$(grep -E "^APP_KEY=" .env | head -n 1 | cut
   echo "[backend_init] generating APP_KEY" >&2
   php artisan key:generate --force
   normalize_app_key
+
+  # Some host filesystems (or bind mount permission setups) can cause key:generate
+  # to report success but not persist the updated .env. Ensure we end up with a
+  # non-empty APP_KEY as the first (and only) entry.
+  if [ "$(grep -E '^APP_KEY=' .env | head -n 1 | cut -d= -f2- | tr -d '[:space:]')" = "" ]; then
+    echo "[backend_init] WARNING: APP_KEY still empty after artisan key:generate; forcing key" >&2
+    APP_KEY_FORCED="$(php -r 'echo "base64:".base64_encode(random_bytes(32));')"
+    upsert_env_kv APP_KEY "${APP_KEY_FORCED}"
+    normalize_app_key
+  fi
 fi
 
 # Ensure tests have an APP_KEY too (php artisan test loads .env.testing if present).
