@@ -71,7 +71,8 @@ Session management:
 - The bot relies on a saved Playwright `storageState` per account:
   - `./storage/cookies/<account_id>.json`
 - Helper script (run locally, opens a browser window):
-  - `npm run login -- <account_id>`
+  - First install browsers once: `npx playwright install chromium`
+  - Then: `npm run login -- <account_id>`
 - You can also manage it via API:
   - `PUT /accounts/:id/storage-state`
   - `GET /accounts/:id/storage-state`
