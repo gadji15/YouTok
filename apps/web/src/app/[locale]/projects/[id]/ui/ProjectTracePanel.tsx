@@ -32,6 +32,13 @@ function statusVariant(status: ApiProjectStatus) {
   return 'secondary';
 }
 
+function truncateText(text: string | null | undefined, maxChars: number) {
+  if (!text) return null;
+  const t = String(text);
+  if (t.length <= maxChars) return t;
+  return `${t.slice(0, maxChars)}\n… (truncated, ${t.length} chars)`;
+}
+
 export function ProjectTracePanel({
   projectId,
   initial,
@@ -167,19 +174,45 @@ export function ProjectTracePanel({
               size="sm"
               onClick={async () => {
                 try {
-                  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/debug`, {
-                    method: 'GET',
-                    cache: 'no-store',
-                  });
-                  const text = await res.text();
-                  await navigator.clipboard.writeText(text);
+                  const debug = {
+                    copied_at: new Date().toISOString(),
+                    project: {
+                      id: projectId,
+                      status: data.status,
+                      stage: data.stage,
+                      progress_percent: data.progress_percent,
+                      worker_job_id: data.worker_job_id,
+                      updated_at: data.updated_at,
+                      last_log_message: truncateText(data.last_log_message, 6_000),
+                      error: truncateText(data.error, 6_000),
+                    },
+                    ui: {
+                      auto_refresh: autoRefresh,
+                      last_fetch_at: lastFetchAt ? new Date(lastFetchAt).toISOString() : null,
+                    },
+                    clips: data.clips.map((c) => ({
+                      id: c.external_id ?? c.id,
+                      status: c.status,
+                    })),
+                    events: [...data.events]
+                      .slice()
+                      .reverse()
+                      .slice(0, 30)
+                      .map((e) => ({
+                        type: e.type,
+                        message: truncateText(e.message, 800),
+                        created_at: e.created_at,
+                      })),
+                  };
+
+                  await navigator.clipboard.writeText(JSON.stringify(debug, null, 2));
                   setLastError(null);
                 } catch (err) {
                   setLastError(err instanceof Error ? err.message : 'Failed to copy debug');
                 }
               }}
             >
-              Copy debug
+              Copy debug (essentiel)
             </Button>
           </div>
         </div>
