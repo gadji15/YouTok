@@ -75,7 +75,7 @@ def test_render_clips_builds_filters_for_stabilization_and_visual_enhance(monkey
     assert ("vidstabtransform=" in vf) or ("deshake=" in vf)
     assert "eq=contrast=" in vf
     assert "unsharp=" in vf
-    assert "crop=w='iw/(if(between(t,0," in vf
+    assert "crop=w='iw/(if(between(t\\,0\\," in vf
 
     assert cmd[cmd.index("-maxrate") + 1] == "10M"
     assert cmd[cmd.index("-bufsize") + 1] == "12M"
