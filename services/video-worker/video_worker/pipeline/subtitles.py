@@ -799,11 +799,13 @@ def write_word_level_ass_for_clip(
         parts_plain: list[str],
         *,
         font_px: int,
+        words_per_line: int,
+        chars_per_line: int,
     ) -> list[list[str]]:
         """Wrap tokens into N lines so each line stays within safe_width_px.
 
-        This is used as a last-resort overflow guard while keeping the same subtitle style
-        (no "Reading" style). It may produce >2 lines in extreme cases.
+        This is a last-resort overflow guard while keeping the same subtitle style
+        (no alternate "Reading" style).
         """
 
         if not parts_formatted:
@@ -826,6 +828,13 @@ def write_word_level_ass_for_clip(
         cur: list[str] = []
         cur_plain: list[str] = []
 
+        def _fits_candidate(cand_plain: list[str]) -> bool:
+            if words_per_line > 0 and len(cand_plain) > words_per_line:
+                return False
+            if chars_per_line > 0 and len(_join_tokens(cand_plain)) > chars_per_line:
+                return False
+            return _measure_line_width_px(cand_plain, font_px=font_px) <= safe_width_px
+
         for pf, pp in zip(expanded_formatted, expanded_plain):
             if not cur:
                 cur = [pf]
@@ -833,7 +842,7 @@ def write_word_level_ass_for_clip(
                 continue
 
             cand_plain = cur_plain + [pp]
-            if _measure_line_width_px(cand_plain, font_px=font_px) <= safe_width_px:
+            if _fits_candidate(cand_plain):
                 cur.append(pf)
                 cur_plain.append(pp)
             else:
@@ -910,14 +919,22 @@ def write_word_level_ass_for_clip(
                 )
 
             if not fits:
-                # Last resort: keep the same "Default" style (no reading-style box), but
-                # split the chunk into multiple events and/or extra lines so we never overflow.
-                if len(chunk) > 1:
+                # Last resort: keep the same "Default" style (no alternate box style), but
+                # wrap into multiple lines so we never overflow horizontally.
+                wrapped = _wrap_tokens_px(
+                    parts_formatted,
+                    parts_plain,
+                    font_px=chosen_font_px,
+                    words_per_line=max_words_per_line,
+                    chars_per_line=max_chars_per_line,
+                )
+
+                # If we end up with too many lines, split into multiple events to keep it readable.
+                max_lines = 4 if play_res_x <= play_res_y else 3
+                if len(wrapped) > max_lines and len(chunk) > 1:
                     mid = max(1, len(chunk) // 2)
                     return _emit_event(chunk[:mid]) + _emit_event(chunk[mid:])
 
-                # Single long token: wrap into multiple lines (may exceed 2) but still keep style.
-                wrapped = _wrap_tokens_px(parts_formatted, parts_plain, font_px=chosen_font_px)
                 if rtl_enabled:
                     lines_str = [
                         prepare_text_for_ass(_join_tokens([strip_ass_tags(p) for p in ln]), rtl=True)
