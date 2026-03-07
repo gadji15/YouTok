@@ -90,7 +90,7 @@ def run(
         if cancel_check is not None:
             try:
                 should_cancel = bool(cancel_check())
-            except Exception as e:
+            except Exception:
                 # If the cancel check raises (e.g. JobCancelledError), stop the process
                 # then propagate the original error.
                 proc.terminate()
@@ -98,7 +98,7 @@ def run(
                     proc.wait(timeout=5.0)
                 except Exception:
                     proc.kill()
-                raise e
+                raise
 
             if should_cancel:
                 proc.terminate()

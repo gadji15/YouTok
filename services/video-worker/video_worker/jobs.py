@@ -845,9 +845,9 @@ def process_job(
                 base = settings.clip_service_base_url.strip().rstrip("/")
 
                 payload = {
+                    "job_id": ctx.job_id,
                     "source_video_path": str(ctx.source_video_path),
                     "output_dir": str(ctx.clips_dir),
-                    "language": language,
                     "clips": [
                         {
                             "clip_id": c.clip_id,
@@ -920,7 +920,7 @@ def process_job(
                         res = client.post(base + "/render", json=payload)
                         try:
                             res.raise_for_status()
-                        except httpx.HTTPStatusError:
+                        except httpx.HTTPStatusError as e:
                             detail = None
                             try:
                                 j = res.json()
@@ -928,6 +928,9 @@ def process_job(
                                     detail = j.get("detail")
                             except Exception:
                                 detail = None
+
+                            if res.status_code == 409 and str(detail or "") == "cancelled":
+                                raise JobCancelledError("job cancelled")
 
                             logger.error(
                                 "clip_service.render_failed",

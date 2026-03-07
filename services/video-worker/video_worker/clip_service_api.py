@@ -10,11 +10,12 @@ from .clip_service_settings import get_clip_service_settings
 from .logging import configure_logging, get_logger
 from .pipeline.clip import render_clips
 from .pipeline.types import ClipCandidate, TranscriptSegment, WordTiming
+from .redis_conn import get_redis
 from .utils.errors import format_exception_short
 
 
-settings = get_clip_service_settings()
-configure_logging(settings.log_level)
+clip_settings = get_clip_service_settings()
+configure_logging(clip_settings.log_level)
 
 app = FastAPI(title="clip-service", version="0.1")
 
@@ -28,7 +29,7 @@ def _resolve_within_storage_root(path_str: str) -> Path:
 
     real = p.resolve()
 
-    root = Path(settings.storage_path).resolve()
+    root = Path(clip_settings.storage_path).resolve()
     root_prefix = str(root).rstrip("/") + "/"
 
     if not str(real).startswith(root_prefix):
@@ -62,6 +63,9 @@ class RenderWordTiming(BaseModel):
 
 
 class RenderRequest(BaseModel):
+    # Optional but strongly recommended: enables cooperative cancellation via Redis cancel key.
+    job_id: str | None = None
+
     source_video_path: str
     output_dir: str
 
@@ -154,6 +158,19 @@ def render(req: RenderRequest) -> dict[str, Any]:
             else None
         )
 
+        cancel_key = f"video-worker:cancel:{req.job_id}" if req.job_id else ""
+
+        def _cancel_check() -> bool:
+            if not cancel_key:
+                return False
+
+            # If the parent job was cancelled, abort rendering promptly.
+            # render_clips/subprocess will terminate ffmpeg and propagate this error.
+            if get_redis().exists(cancel_key) == 1:
+                raise HTTPException(status_code=409, detail="cancelled")
+
+            return False
+
         rendered = render_clips(
             source_video=source_video,
             transcript_segments=transcript,
@@ -181,16 +198,17 @@ def render(req: RenderRequest) -> dict[str, Any]:
             text_aware_crop_max_zoom=req.text_aware_crop_max_zoom,
             text_aware_crop_reading_hold_sec=req.text_aware_crop_reading_hold_sec,
             text_aware_crop_debug_frames=req.text_aware_crop_debug_frames,
-            quality_gate_enabled=settings.quality_gate_enabled,
-            quality_gate_face_overlap_p95_threshold=settings.quality_gate_face_overlap_p95_threshold,
-            quality_gate_max_attempts=settings.quality_gate_max_attempts,
-            viral_engine_enabled=bool(req.viral_engine_enabled) and bool(settings.viral_engine_enabled),
-            viral_effect_style=req.viral_effect_style or settings.viral_effect_style,
+            quality_gate_enabled=clip_settings.quality_gate_enabled,
+            quality_gate_face_overlap_p95_threshold=clip_settings.quality_gate_face_overlap_p95_threshold,
+            quality_gate_max_attempts=clip_settings.quality_gate_max_attempts,
+            viral_engine_enabled=bool(req.viral_engine_enabled) and bool(clip_settings.viral_engine_enabled),
+            viral_effect_style=req.viral_effect_style or clip_settings.viral_effect_style,
             viral_zoom_intensity=float(req.viral_zoom_intensity),
-            viral_hook_text_enabled=bool(req.viral_hook_text_enabled) and bool(settings.viral_hook_text_enabled),
-            viral_emojis_enabled=bool(req.viral_emojis_enabled) and bool(settings.viral_emojis_enabled),
+            viral_hook_text_enabled=bool(req.viral_hook_text_enabled) and bool(clip_settings.viral_hook_text_enabled),
+            viral_emojis_enabled=bool(req.viral_emojis_enabled) and bool(clip_settings.viral_emojis_enabled),
             viral_max_emojis=int(req.viral_max_emojis),
             language=req.language,
+            cancel_check=_cancel_check if cancel_key else None,
         )
 
         return {"clips": rendered}
