@@ -843,13 +843,28 @@ def render_clips(
         # - Keep bitrate reasonable to avoid extra aggressive recompression
         gop = int(max(1, fps * 2))
 
-        def _build_ffmpeg_args(*, vf: str) -> list[str]:
+        def _build_ffmpeg_args(*, vf: str, progress_mode: bool = False) -> list[str]:
             ffmpeg_args: list[str] = [
                 "ffmpeg",
                 "-y",
                 "-hide_banner",
-                "-loglevel",
-                "error",
+            ]
+
+            if progress_mode:
+                ffmpeg_args += [
+                    "-loglevel",
+                    "error",
+                    "-nostats",
+                    "-progress",
+                    "pipe:1",
+                ]
+            else:
+                ffmpeg_args += [
+                    "-loglevel",
+                    "error",
+                ]
+
+            ffmpeg_args += [
                 "-ss",
                 str(ffmpeg_start_seconds),
                 "-i",
@@ -992,9 +1007,14 @@ def render_clips(
         # Always render at least once.
         if not attempt_placements:
             vf_once = list(vf_parts)
-            ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once))
+            ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once), progress_mode=True)
+
+            running_seconds = 0.0
 
             def _hb(meta: dict) -> None:
+                nonlocal running_seconds
+                running_seconds = float(meta.get("running_seconds") or 0.0)
+
                 if progress_callback is None:
                     return
                 progress_callback(
@@ -1003,16 +1023,57 @@ def render_clips(
                         "clip_id": clip.clip_id,
                         "index": idx,
                         "total": total,
-                        "running_seconds": float(meta.get("running_seconds") or 0.0),
+                        "running_seconds": running_seconds,
                         "attempt": 1,
                     }
                 )
+
+            clip_total_us = int(round(float(duration) * 1_000_000.0))
+
+            def _on_line(which: str, line: str) -> None:
+                if progress_callback is None:
+                    return
+                if which != "stdout":
+                    return
+
+                s = line.strip()
+                if not s:
+                    return
+
+                if "=" not in s:
+                    return
+
+                k, v = s.split("=", 1)
+                if k == "out_time_us":
+                    try:
+                        out_us = int(v)
+                    except Exception:
+                        return
+
+                    if clip_total_us <= 0:
+                        return
+
+                    frac = max(0.0, min(1.0, float(out_us) / float(clip_total_us)))
+                    progress_callback(
+                        {
+                            "event": "render.clip.progress",
+                            "clip_id": clip.clip_id,
+                            "index": idx,
+                            "total": total,
+                            "attempt": 1,
+                            "running_seconds": running_seconds,
+                            "out_time_us": out_us,
+                            "duration_us": clip_total_us,
+                            "progress": frac,
+                        }
+                    )
 
             run(
                 ffmpeg_args,
                 logger=logger.bind(clip_id=clip.clip_id, attempt=1),
                 heartbeat_callback=_hb,
                 heartbeat_interval_seconds=60.0,
+                line_callback=_on_line,
             )
         else:
             ok = False
@@ -1027,9 +1088,14 @@ def render_clips(
 
                 vf_once = list(vf_parts)
 
-                ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once))
+                ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once), progress_mode=True)
+
+                running_seconds = 0.0
 
                 def _hb(meta: dict) -> None:
+                    nonlocal running_seconds
+                    running_seconds = float(meta.get("running_seconds") or 0.0)
+
                     if progress_callback is None:
                         return
                     progress_callback(
@@ -1038,16 +1104,57 @@ def render_clips(
                             "clip_id": clip.clip_id,
                             "index": idx,
                             "total": total,
-                            "running_seconds": float(meta.get("running_seconds") or 0.0),
+                            "running_seconds": running_seconds,
                             "attempt": attempt_idx,
                         }
                     )
+
+                clip_total_us = int(round(float(duration) * 1_000_000.0))
+
+                def _on_line(which: str, line: str) -> None:
+                    if progress_callback is None:
+                        return
+                    if which != "stdout":
+                        return
+
+                    s = line.strip()
+                    if not s:
+                        return
+
+                    if "=" not in s:
+                        return
+
+                    k, v = s.split("=", 1)
+                    if k == "out_time_us":
+                        try:
+                            out_us = int(v)
+                        except Exception:
+                            return
+
+                        if clip_total_us <= 0:
+                            return
+
+                        frac = max(0.0, min(1.0, float(out_us) / float(clip_total_us)))
+                        progress_callback(
+                            {
+                                "event": "render.clip.progress",
+                                "clip_id": clip.clip_id,
+                                "index": idx,
+                                "total": total,
+                                "attempt": attempt_idx,
+                                "running_seconds": running_seconds,
+                                "out_time_us": out_us,
+                                "duration_us": clip_total_us,
+                                "progress": frac,
+                            }
+                        )
 
                 run(
                     ffmpeg_args,
                     logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx),
                     heartbeat_callback=_hb,
                     heartbeat_interval_seconds=60.0,
+                    line_callback=_on_line,
                 )
 
                 try:

@@ -14,10 +14,11 @@ def run(
     logger: structlog.BoundLogger,
     heartbeat_callback=None,
     heartbeat_interval_seconds: float = 60.0,
+    line_callback=None,
 ) -> None:
     logger.info("exec", args=list(args), cwd=str(cwd) if cwd else None)
 
-    if heartbeat_callback is None:
+    if heartbeat_callback is None and line_callback is None:
         try:
             subprocess.run(
                 list(args),
@@ -44,12 +45,17 @@ def run(
     stdout_tail: deque[str] = deque(maxlen=2000)
     stderr_tail: deque[str] = deque(maxlen=2000)
 
-    def _drain(stream, buf: deque[str]) -> None:
+    def _drain(stream, buf: deque[str], which: str) -> None:
         try:
             for line in iter(stream.readline, ""):
                 if not line:
                     break
                 buf.append(line)
+                if line_callback is not None:
+                    try:
+                        line_callback(which, line)
+                    except Exception:
+                        pass
         finally:
             try:
                 stream.close()
@@ -68,8 +74,8 @@ def run(
     assert proc.stdout is not None
     assert proc.stderr is not None
 
-    t_out = Thread(target=_drain, args=(proc.stdout, stdout_tail), daemon=True)
-    t_err = Thread(target=_drain, args=(proc.stderr, stderr_tail), daemon=True)
+    t_out = Thread(target=_drain, args=(proc.stdout, stdout_tail, "stdout"), daemon=True)
+    t_err = Thread(target=_drain, args=(proc.stderr, stderr_tail, "stderr"), daemon=True)
     t_out.start()
     t_err.start()
 
@@ -80,7 +86,7 @@ def run(
         rc = proc.poll()
         now = time.time()
 
-        if now - last_beat >= float(heartbeat_interval_seconds):
+        if heartbeat_callback is not None and now - last_beat >= float(heartbeat_interval_seconds):
             last_beat = now
             try:
                 heartbeat_callback({"running_seconds": now - started})

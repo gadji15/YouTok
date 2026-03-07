@@ -959,7 +959,17 @@ def process_job(
                 ev = str(evt.get("event") or "")
 
                 # Render is the longest stage. Emit granular progress to help debug stalls.
-                if ev == "render.clip.heartbeat":
+                if ev == "render.clip.progress":
+                    running = float(evt.get("running_seconds") or 0.0)
+                    frac = float(evt.get("progress") or 0.0)
+                    pct = int(round(frac * 100.0))
+                    msg = (
+                        f"Rendering clip {idx}/{total} ({clip_id}) — {pct}%"
+                        + (f" ({int(running)}s)" if running > 0 else "")
+                        if clip_id
+                        else f"Rendering clip {idx}/{total} — {pct}%" + (f" ({int(running)}s)" if running > 0 else "")
+                    )
+                elif ev == "render.clip.heartbeat":
                     running = float(evt.get("running_seconds") or 0.0)
                     msg = (
                         f"Rendering clip {idx}/{total} ({clip_id}) — still running ({int(running)}s)"
@@ -970,9 +980,15 @@ def process_job(
                     msg = f"Rendering clip {idx}/{total} ({clip_id})" if clip_id else f"Rendering clip {idx}/{total}"
 
                 # Map within [90..99] so overall job progress stays monotonic.
-                pct = 90
+                # If we have ffmpeg per-clip progress, refine within the current clip.
+                base = 90
                 if total > 0 and idx > 0:
-                    pct = 90 + int(round(9.0 * min(1.0, max(0.0, float(idx) / float(total)))))
+                    base = 90 + int(round(9.0 * min(1.0, max(0.0, float((idx - 1)) / float(total)))))
+
+                pct = base
+                if ev == "render.clip.progress" and total > 0:
+                    frac = float(evt.get("progress") or 0.0)
+                    pct = min(99, max(base, base + int(round(9.0 * min(1.0, max(0.0, frac)) / float(total)))))
 
                 # Include the raw event in the message for later inspection.
                 _best_effort_progress_callback(
