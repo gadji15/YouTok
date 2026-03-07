@@ -993,7 +993,27 @@ def render_clips(
         if not attempt_placements:
             vf_once = list(vf_parts)
             ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once))
-            run(ffmpeg_args, logger=logger.bind(clip_id=clip.clip_id, attempt=1))
+
+            def _hb(meta: dict) -> None:
+                if progress_callback is None:
+                    return
+                progress_callback(
+                    {
+                        "event": "render.clip.heartbeat",
+                        "clip_id": clip.clip_id,
+                        "index": idx,
+                        "total": total,
+                        "running_seconds": float(meta.get("running_seconds") or 0.0),
+                        "attempt": 1,
+                    }
+                )
+
+            run(
+                ffmpeg_args,
+                logger=logger.bind(clip_id=clip.clip_id, attempt=1),
+                heartbeat_callback=_hb,
+                heartbeat_interval_seconds=60.0,
+            )
         else:
             ok = False
             last_face95 = 0.0
@@ -1009,7 +1029,26 @@ def render_clips(
 
                 ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once))
 
-                run(ffmpeg_args, logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx))
+                def _hb(meta: dict) -> None:
+                    if progress_callback is None:
+                        return
+                    progress_callback(
+                        {
+                            "event": "render.clip.heartbeat",
+                            "clip_id": clip.clip_id,
+                            "index": idx,
+                            "total": total,
+                            "running_seconds": float(meta.get("running_seconds") or 0.0),
+                            "attempt": attempt_idx,
+                        }
+                    )
+
+                run(
+                    ffmpeg_args,
+                    logger=logger.bind(clip_id=clip.clip_id, attempt=attempt_idx),
+                    heartbeat_callback=_hb,
+                    heartbeat_interval_seconds=60.0,
+                )
 
                 try:
                     face95, ui95 = measure_overlap_p95_for_video(

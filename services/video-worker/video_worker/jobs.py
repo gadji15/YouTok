@@ -956,8 +956,18 @@ def process_job(
                 idx = int(evt.get("index") or 0)
                 total = int(evt.get("total") or 0)
 
+                ev = str(evt.get("event") or "")
+
                 # Render is the longest stage. Emit granular progress to help debug stalls.
-                msg = f"Rendering clip {idx}/{total} ({clip_id})" if clip_id else f"Rendering clip {idx}/{total}"
+                if ev == "render.clip.heartbeat":
+                    running = float(evt.get("running_seconds") or 0.0)
+                    msg = (
+                        f"Rendering clip {idx}/{total} ({clip_id}) — still running ({int(running)}s)"
+                        if clip_id
+                        else f"Rendering clip {idx}/{total} — still running ({int(running)}s)"
+                    )
+                else:
+                    msg = f"Rendering clip {idx}/{total} ({clip_id})" if clip_id else f"Rendering clip {idx}/{total}"
 
                 # Map within [90..99] so overall job progress stays monotonic.
                 pct = 90
