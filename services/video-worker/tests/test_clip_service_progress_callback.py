@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from video_worker.clip_service_api import RenderRequest, render
+import video_worker.clip_service_api as clip_service_api
 
 
 def test_clip_service_emits_progress_callbacks_when_callback_fields_present(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("video_worker.clip_service_api.clip_settings.storage_path", str(tmp_path), raising=False)
+    monkeypatch.setattr(clip_service_api.clip_settings, "storage_path", str(tmp_path))
 
     seen: dict = {}
 
@@ -15,7 +15,7 @@ def test_clip_service_emits_progress_callbacks_when_callback_fields_present(monk
         seen["callback_secret"] = callback_secret
         seen["payload"] = payload
 
-    monkeypatch.setattr("video_worker.clip_service_api.post_callback", fake_post_callback)
+    monkeypatch.setattr(clip_service_api, "post_callback", fake_post_callback)
 
     def fake_render_clips(*, progress_callback=None, **_kwargs):
         assert progress_callback is not None
@@ -31,10 +31,10 @@ def test_clip_service_emits_progress_callbacks_when_callback_fields_present(monk
         )
         return []
 
-    monkeypatch.setattr("video_worker.clip_service_api.render_clips", fake_render_clips)
-    monkeypatch.setattr("video_worker.clip_service_api.time.time", lambda: 100.0)
+    monkeypatch.setattr(clip_service_api, "render_clips", fake_render_clips)
+    monkeypatch.setattr(clip_service_api.time, "time", lambda: 100.0)
 
-    req = RenderRequest(
+    req = clip_service_api.RenderRequest(
         job_id="job_1",
         project_id="proj_1",
         callback_url="https://example.test/callback",
@@ -59,7 +59,7 @@ def test_clip_service_emits_progress_callbacks_when_callback_fields_present(monk
         ],
     )
 
-    render(req)
+    clip_service_api.render(req)
 
     assert seen["callback_url"] == "https://example.test/callback"
     assert seen["callback_secret"] == "secret"
