@@ -1006,7 +1006,8 @@ def render_clips(
         attempts_log: list[dict] = []
 
         # Always render at least once.
-        if not attempt_placements:
+        # If the quality gate is disabled, skip the expensive overlap measurement pass.
+        if not attempt_placements or not quality_gate_enabled:
             vf_once = list(vf_parts)
             ffmpeg_args = _build_ffmpeg_args(vf=",".join(vf_once), progress_mode=True)
 
@@ -1200,12 +1201,12 @@ def render_clips(
                     }
                 )
 
-                if not quality_gate_enabled or passed:
+                if passed:
                     ok = True
                     break
 
             # If quality gate is enabled and we still failed, keep the last render but record failure.
-            if quality_gate_enabled and not ok:
+            if not ok:
                 logger.warning(
                     "subtitles.quality_gate_failed",
                     clip_id=clip.clip_id,
