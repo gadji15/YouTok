@@ -239,6 +239,7 @@ export default async function ProjectDetailsPage({
             updated_at: project.updated_at,
             last_log_message: project.last_log_message,
             error: project.error,
+            worker_job_id: project.worker_job_id,
             events: project.events,
             clips: project.clips,
           }}

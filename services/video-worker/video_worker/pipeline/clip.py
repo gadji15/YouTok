@@ -137,6 +137,7 @@ def render_clips(
     clips: list[ClipCandidate],
     output_dir: Path,
     logger: structlog.BoundLogger,
+    progress_callback=None,
     subtitles_enabled: bool = True,
     subtitle_template: str = "default",
     subtitle_max_words_per_line: int = 6,
@@ -251,7 +252,24 @@ def render_clips(
     is_source_aspect = effective_output_aspect == "source"
 
     # Vertical (9:16) is the default TikTok-ready output
-    for clip in clips:
+    total = max(1, len(clips))
+    for idx, clip in enumerate(clips, start=1):
+        if progress_callback is not None:
+            try:
+                progress_callback(
+                    {
+                        "event": "render.clip.started",
+                        "clip_id": clip.clip_id,
+                        "index": idx,
+                        "total": total,
+                        "start_seconds": float(clip.start_seconds),
+                        "end_seconds": float(clip.end_seconds),
+                        "duration_seconds": float(max(0.0, clip.end_seconds - clip.start_seconds)),
+                    }
+                )
+            except Exception:
+                pass
+
         clip_dir = output_dir / clip.clip_id
         clip_dir.mkdir(parents=True, exist_ok=True)
 
@@ -557,6 +575,22 @@ def render_clips(
                     "subtitles_srt_path": str(out_srt),
                 }
             )
+
+            if progress_callback is not None:
+                try:
+                    progress_callback(
+                        {
+                            "event": "render.clip.completed",
+                            "clip_id": clip.clip_id,
+                            "index": idx,
+                            "total": total,
+                            "cached": True,
+                            "video_path": str(out_video),
+                        }
+                    )
+                except Exception:
+                    pass
+
             continue
 
         duration = max(0.0, clip.end_seconds - clip.start_seconds)
@@ -1074,5 +1108,20 @@ def render_clips(
                 "subtitles_srt_path": str(out_srt),
             }
         )
+
+        if progress_callback is not None:
+            try:
+                progress_callback(
+                    {
+                        "event": "render.clip.completed",
+                        "clip_id": clip.clip_id,
+                        "index": idx,
+                        "total": total,
+                        "cached": False,
+                        "video_path": str(out_video),
+                    }
+                )
+            except Exception:
+                pass
 
     return rendered

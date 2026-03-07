@@ -39,7 +39,15 @@ export function ProjectTracePanel({
   projectId: string;
   initial: Pick<
     ApiProjectDetail,
-    'status' | 'stage' | 'progress_percent' | 'updated_at' | 'last_log_message' | 'error' | 'events' | 'clips'
+    'status'
+    | 'stage'
+    | 'progress_percent'
+    | 'updated_at'
+    | 'last_log_message'
+    | 'error'
+    | 'worker_job_id'
+    | 'events'
+    | 'clips'
   >;
 }) {
   const [data, setData] = useState(initial);
@@ -70,6 +78,7 @@ export function ProjectTracePanel({
         updated_at: json.updated_at,
         last_log_message: json.last_log_message,
         error: json.error,
+        worker_job_id: json.worker_job_id,
         events: json.events,
         clips: json.clips,
       });
@@ -152,6 +161,7 @@ export function ProjectTracePanel({
           <Badge variant={statusVariant(data.status)}>{data.status}</Badge>
           <Badge variant="secondary">stage: {data.stage ?? '—'}</Badge>
           <Badge variant="secondary">progress: {data.progress_percent ?? 0}%</Badge>
+          {data.worker_job_id ? <Badge variant="secondary">job: {data.worker_job_id}</Badge> : null}
           <span className="text-[var(--text-muted)]">
             last update: {data.updated_at ? new Date(data.updated_at).toLocaleString() : '—'}
             {updatedAge ? ` (${formatAge(updatedAge)} ago)` : ''}

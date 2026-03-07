@@ -158,6 +158,7 @@ class ProjectController
             'progress_percent' => $project->progress_percent,
             'last_log_message' => $project->last_log_message,
             'error' => $project->error,
+            'worker_job_id' => $project->worker_job_id,
 
             'options' => [
                 'language' => $project->language,

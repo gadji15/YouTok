@@ -951,12 +951,38 @@ def process_job(
                         base_url=base,
                     )
 
+            def _render_progress(evt: dict) -> None:
+                clip_id = str(evt.get("clip_id") or "")
+                idx = int(evt.get("index") or 0)
+                total = int(evt.get("total") or 0)
+
+                # Render is the longest stage. Emit granular progress to help debug stalls.
+                msg = f"Rendering clip {idx}/{total} ({clip_id})" if clip_id else f"Rendering clip {idx}/{total}"
+
+                # Map within [90..99] so overall job progress stays monotonic.
+                pct = 90
+                if total > 0 and idx > 0:
+                    pct = 90 + int(round(9.0 * min(1.0, max(0.0, float(idx) / float(total)))))
+
+                # Include the raw event in the message for later inspection.
+                _best_effort_progress_callback(
+                    ctx=ctx,
+                    stage="render_clips",
+                    progress_percent=pct,
+                    message=msg,
+                    timeout_seconds=settings.callback_timeout_seconds,
+                    max_retries=settings.callback_max_retries,
+                    retry_backoff_seconds=settings.callback_retry_backoff_seconds,
+                    logger=logger.bind(render_event=str(evt.get("event") or ""), clip_id=clip_id or None),
+                )
+
             return render_clips(
                 source_video=ctx.source_video_path,
                 transcript_segments=render_segments,
                 clips=clips,
                 output_dir=ctx.clips_dir,
                 logger=logger,
+                progress_callback=_render_progress,
                 subtitles_enabled=effective_subtitles_enabled,
                 subtitle_template=effective_subtitle_template,
                 subtitle_max_words_per_line=settings.subtitle_max_words_per_line,
