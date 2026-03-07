@@ -846,6 +846,9 @@ def process_job(
 
                 payload = {
                     "job_id": ctx.job_id,
+                    "project_id": ctx.project_id,
+                    "callback_url": ctx.callback_url,
+                    "callback_secret": ctx.callback_secret,
                     "source_video_path": str(ctx.source_video_path),
                     "output_dir": str(ctx.clips_dir),
                     "clips": [

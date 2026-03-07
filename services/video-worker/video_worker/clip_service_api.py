@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import time
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from .callback import JobCallbackPayload, JobStatus, post_callback
 from .clip_service_settings import get_clip_service_settings
 from .logging import configure_logging, get_logger
 from .pipeline.clip import render_clips
@@ -65,6 +67,11 @@ class RenderWordTiming(BaseModel):
 class RenderRequest(BaseModel):
     # Optional but strongly recommended: enables cooperative cancellation via Redis cancel key.
     job_id: str | None = None
+
+    # Optional: if provided, the clip-service will emit progress callbacks during rendering.
+    project_id: str | None = None
+    callback_url: str | None = None
+    callback_secret: str | None = None
 
     source_video_path: str
     output_dir: str
@@ -171,12 +178,102 @@ def render(req: RenderRequest) -> dict[str, Any]:
 
             return False
 
+        callback_enabled = (
+            bool(req.callback_url)
+            and bool(req.callback_secret)
+            and bool(req.job_id)
+            and bool(req.project_id)
+        )
+
+        last_sent_at = 0.0
+        last_bucket: tuple[str, int, int] | None = None
+
+        def _progress(evt: dict) -> None:
+            nonlocal last_sent_at, last_bucket
+
+            if not callback_enabled:
+                return
+
+            ev = str(evt.get("event") or "")
+            clip_id = str(evt.get("clip_id") or "")
+            idx = int(evt.get("index") or 0)
+            total = int(evt.get("total") or 0)
+
+            base = 90
+            if total > 0 and idx > 0:
+                base = 90 + int(round(9.0 * min(1.0, max(0.0, float((idx - 1)) / float(total)))))
+
+            progress_percent = base
+
+            if ev == "render.clip.progress":
+                frac = float(evt.get("progress") or 0.0)
+                pct = int(round(frac * 100.0))
+                running = float(evt.get("running_seconds") or 0.0)
+
+                msg = f"Rendering clip {idx}/{total} ({clip_id}) — {pct}%"
+                if running > 0:
+                    msg += f" ({int(running)}s)"
+
+                if total > 0:
+                    progress_percent = min(
+                        99,
+                        max(base, base + int(round(9.0 * min(1.0, max(0.0, frac)) / float(total)))),
+                    )
+
+                bucket = (clip_id, idx, int(pct // 5))
+                now = time.time()
+                if bucket == last_bucket and now - last_sent_at < 10.0:
+                    return
+                if now - last_sent_at < 2.0:
+                    return
+
+                last_bucket = bucket
+                last_sent_at = now
+            elif ev == "render.clip.heartbeat":
+                running = float(evt.get("running_seconds") or 0.0)
+                msg = f"Rendering clip {idx}/{total} ({clip_id}) — still running ({int(running)}s)"
+
+                now = time.time()
+                if now - last_sent_at < 30.0:
+                    return
+
+                last_sent_at = now
+            else:
+                msg = f"Rendering clip {idx}/{total} ({clip_id})"
+
+                now = time.time()
+                if now - last_sent_at < 1.0:
+                    return
+
+                last_sent_at = now
+
+            try:
+                post_callback(
+                    callback_url=str(req.callback_url),
+                    callback_secret=str(req.callback_secret),
+                    payload=JobCallbackPayload(
+                        job_id=str(req.job_id),
+                        project_id=str(req.project_id),
+                        status=JobStatus.processing,
+                        stage="render_clips",
+                        progress_percent=int(progress_percent),
+                        message=msg,
+                    ),
+                    timeout_seconds=3.0,
+                    max_retries=0,
+                    retry_backoff_seconds=0.0,
+                    logger=logger.bind(render_event=ev, clip_id=clip_id or None),
+                )
+            except Exception:
+                logger.exception("clip_service.progress_callback_failed", render_event=ev, clip_id=clip_id)
+
         rendered = render_clips(
             source_video=source_video,
             transcript_segments=transcript,
             clips=clips,
             output_dir=output_dir,
             logger=logger,
+            progress_callback=_progress if callback_enabled else None,
             subtitles_enabled=req.subtitles_enabled,
             subtitle_template=req.subtitle_template,
             subtitle_max_words_per_line=req.subtitle_max_words_per_line,
