@@ -182,6 +182,11 @@ def render_clips(
         s = p.as_posix()
         return s.replace('\\', '\\\\').replace(':', '\\:').replace(',', '\\,')
 
+    def _ffmpeg_filter_escape_expr(s: str) -> str:
+        # In filtergraphs, ',' separates filters and ':' separates args.
+        # Escape them so expressions like if(between(t,0,1),...) remain intact.
+        return str(s).replace('\\', '\\\\').replace(':', '\\:').replace(',', '\\,')
+
     def _best_effort_log_ass_stats(*, ass_path: Path, clip_id: str, source: str) -> dict | None:
         try:
             text = ass_path.read_text(encoding="utf-8", errors="replace")
@@ -765,7 +770,10 @@ def render_clips(
                     f"if(between(t,{rise},{fall}),{z_peak}-{intensity}*((t-{rise})/{(fall - rise)}),1))"
                 )
 
-                vf_parts.append(f"crop=w='iw/({z_expr})':h='ih/({z_expr})':x='(iw-w)/2':y='(ih-h)/2'")
+                z_expr_escaped = _ffmpeg_filter_escape_expr(z_expr)
+                vf_parts.append(
+                    f"crop=w='iw/({z_expr_escaped})':h='ih/({z_expr_escaped})':x='(iw-w)/2':y='(ih-h)/2'"
+                )
                 vf_parts.append(f"scale={play_res_x}:{play_res_y}")
 
         clip_subtitles_enabled = subtitles_enabled and out_ass.exists() and out_ass.stat().st_size > 0
