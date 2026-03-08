@@ -105,8 +105,10 @@
     },
     "actions": {
       "retry": "Retry",
+      "retrying": "Retrying…",
+      "retryConfirm": "Retry this project? The current job (if any) will be cancelled and processing will restart.",
       "delete": "Delete",
-      "deleteConfirm": "Delete this project and all its clips? If processing is running, the job will be cancelled. This cannot be undone.",
+      "deleteConfirm": "Delete this project and all its clips? If a processing job is running, it will be cancelled. This action is irreversible.",
       "deleting": "Deleting…"
     },
     "overview": {

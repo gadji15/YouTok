@@ -197,6 +197,9 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -209,6 +212,9 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      # Default RQ job timeout is 45 minutes in code; real projects can exceed this.
+      # Increase as needed (seconds).
+      VIDEO_WORKER_RQ_JOB_TIMEOUT_SECONDS: ${VIDEO_WORKER_RQ_JOB_TIMEOUT_SECONDS:-14400}
       VIDEO_WORKER_S3_BUCKET: ${VIDEO_WORKER_S3_BUCKET:-}
       VIDEO_WORKER_S3_PREFIX: ${VIDEO_WORKER_S3_PREFIX:-hikma}
       VIDEO_WORKER_S3_REGION: ${VIDEO_WORKER_S3_REGION:-}
@@ -281,6 +287,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      # Keep in sync with video-worker-api (used for RQ job timeouts and clip-service HTTP read timeout).
+      VIDEO_WORKER_RQ_JOB_TIMEOUT_SECONDS: ${VIDEO_WORKER_RQ_JOB_TIMEOUT_SECONDS:-14400}
       VIDEO_WORKER_S3_BUCKET: ${VIDEO_WORKER_S3_BUCKET:-}
       VIDEO_WORKER_S3_PREFIX: ${VIDEO_WORKER_S3_PREFIX:-hikma}
       VIDEO_WORKER_S3_REGION: ${VIDEO_WORKER_S3_REGION:-}
@@ -352,6 +360,7 @@ volumes:
   video_worker_torch_cache:
   video_worker_whisper_cache:
   tiktok_bot_storage:
+  redis_data:
   caddy_data:
   caddy_config:
 

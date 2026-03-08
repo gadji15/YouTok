@@ -35,14 +35,15 @@ def estimate_motion_center_x_with_confidence(
 
     try:
         import shutil
+        import uuid
 
         import cv2
     except Exception:
         return None
 
-    frames_dir = work_dir / "frames"
-    if frames_dir.exists():
-        shutil.rmtree(frames_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    frames_dir = work_dir / f"frames_{uuid.uuid4().hex}"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -158,14 +159,15 @@ def estimate_edge_center_x_with_confidence(
 
     try:
         import shutil
+        import uuid
 
         import cv2
     except Exception:
         return None
 
-    frames_dir = work_dir / "frames"
-    if frames_dir.exists():
-        shutil.rmtree(frames_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    frames_dir = work_dir / f"frames_{uuid.uuid4().hex}"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     try:

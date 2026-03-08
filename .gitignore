@@ -1,12 +1,17 @@
 /backend/
 .env
- # Python
+
+# Python
 .venv/
+.venv-1/
 __pycache__/
 *.pyc
 
 # Node
 node_modules/
+
+# Service runtime storage
+/services/tiktok-bot/storage/
 
 # Logs
 *.log

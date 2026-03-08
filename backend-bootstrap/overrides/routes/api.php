@@ -17,6 +17,7 @@ Route::middleware('internal.secret')->post('/uploads/video', [UploadController::
 Route::middleware('internal.secret')->get('/projects', [ProjectController::class, 'index']);
 Route::middleware('internal.secret')->post('/projects', [ProjectController::class, 'store']);
 Route::middleware('internal.secret')->get('/projects/{project}', [ProjectController::class, 'show']);
+Route::middleware('internal.secret')->post('/projects/{project}/retry', [ProjectController::class, 'retry']);
 Route::middleware('internal.secret')->get('/projects/{project}/debug', [ProjectController::class, 'debug']);
 Route::middleware('internal.secret')->delete('/projects/{project}', [ProjectController::class, 'destroy']);
 

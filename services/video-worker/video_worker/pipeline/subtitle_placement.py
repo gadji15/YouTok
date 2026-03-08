@@ -44,14 +44,19 @@ def _extract_frames(
 ) -> list[Path]:
     import shutil
     import subprocess
+    import uuid
 
-    frames_dir = work_dir / "frames"
-    if frames_dir.exists():
-        shutil.rmtree(frames_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    # Use an isolated frames directory per invocation.
+    # This avoids racy cleanup issues on shared volumes (e.g. ENOTEMPTY when a prior
+    # ffmpeg process is still writing frames) and prevents mixing old/new frames.
+    frames_dir = work_dir / f"frames_{uuid.uuid4().hex}"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     duration = max(0.0, end_seconds - start_seconds)
     if duration <= 0.1:
+        shutil.rmtree(frames_dir, ignore_errors=True)
         return []
 
     try:
@@ -77,8 +82,12 @@ def _extract_frames(
             stderr=subprocess.DEVNULL,
         )
 
-        return sorted(frames_dir.glob("frame_*.jpg"))
+        frames = sorted(frames_dir.glob("frame_*.jpg"))
+        if not frames:
+            shutil.rmtree(frames_dir, ignore_errors=True)
+        return frames
     except Exception:
+        shutil.rmtree(frames_dir, ignore_errors=True)
         return []
 
 
@@ -332,6 +341,8 @@ def measure_overlap_p95_for_video(
     Returns: (face_overlap_p95, ui_overlap_p95)
     """
 
+    import shutil
+
     frames = _extract_frames(
         video_path=video_path,
         start_seconds=start_seconds,
@@ -343,6 +354,15 @@ def measure_overlap_p95_for_video(
 
     if not frames:
         return 0.0, 0.0
+
+    # Cap the number of frames we analyze to avoid very long runtimes on long clips.
+    # (This is an approximate metric; evenly sampling is sufficient.)
+    max_frames = 180
+    if len(frames) > max_frames:
+        step = max(1, int(len(frames) / max_frames))
+        frames = frames[::step]
+
+    frames_dir = frames[0].parent
 
     try:
         box_h = int(play_res_y * 0.14)
@@ -357,6 +377,8 @@ def measure_overlap_p95_for_video(
     except Exception:
         logger.exception("subtitles.overlap_measure_failed")
         return 0.0, 0.0
+    finally:
+        shutil.rmtree(frames_dir, ignore_errors=True)
 
 
 def choose_subtitle_placement(
@@ -377,6 +399,8 @@ def choose_subtitle_placement(
     - Otherwise pick among bottom/top/above-mouth and avoid overlapping >10% of face bbox.
     """
 
+    import shutil
+
     # Keep subtitles higher than the TikTok UI (buttons/captions).
     # For bottom placement we anchor relative to the UI safe zone, not the absolute bottom.
     top_margin = int(max(play_res_y * 0.08, 120))
@@ -392,194 +416,210 @@ def choose_subtitle_placement(
         work_dir=work_dir,
     )
 
-    face_bboxes, mouth_ymin = _detect_faces_and_mouth_ymin_rel(frames[:5])
+    # Cap frame count to keep this selection step bounded on long clips.
+    max_frames = 120
+    if len(frames) > max_frames:
+        step = max(1, int(len(frames) / max_frames))
+        frames = frames[::step]
 
-    ui_score = 0.0
+    frames_dir = frames[0].parent if frames else None
+
     try:
-        import cv2
+        face_bboxes, mouth_ymin = _detect_faces_and_mouth_ymin_rel(frames[:5])
 
-        if frames:
-            img = cv2.imread(str(frames[len(frames) // 2]))
-            if img is not None:
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                h, w = gray.shape[:2]
-                # Heuristic: edge density in bottom third and corners.
-                bottom = _edge_density(gray, x0=0, y0=int(h * 0.70), x1=w, y1=h)
-                tl = _edge_density(gray, x0=0, y0=0, x1=int(w * 0.20), y1=int(h * 0.20))
-                tr = _edge_density(gray, x0=int(w * 0.80), y0=0, x1=w, y1=int(h * 0.20))
-                ui_score = max(bottom, tl, tr)
-    except Exception:
         ui_score = 0.0
+        try:
+            import cv2
 
-    # Approx subtitle box height (2 lines + padding).
-    box_h = int(play_res_y * 0.14)
+            if frames:
+                img = cv2.imread(str(frames[len(frames) // 2]))
+                if img is not None:
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    h, w = gray.shape[:2]
+                    # Heuristic: edge density in bottom third and corners.
+                    bottom = _edge_density(gray, x0=0, y0=int(h * 0.70), x1=w, y1=h)
+                    tl = _edge_density(gray, x0=0, y0=0, x1=int(w * 0.20), y1=int(h * 0.20))
+                    tr = _edge_density(gray, x0=int(w * 0.80), y0=0, x1=w, y1=int(h * 0.20))
+                    ui_score = max(bottom, tl, tr)
+        except Exception:
+            ui_score = 0.0
 
-    candidates: list[SubtitlePlacement] = []
+        # Approx subtitle box height (2 lines + padding).
+        box_h = int(play_res_y * 0.14)
 
-    # bottom-center (but anchored above UI safe zone)
-    candidates.append(SubtitlePlacement(alignment=2, x=play_res_x // 2, y=bottom_anchor_y))
+        candidates: list[SubtitlePlacement] = []
 
-    # top-center
-    candidates.append(SubtitlePlacement(alignment=8, x=play_res_x // 2, y=top_margin))
+        # bottom-center (but anchored above UI safe zone)
+        candidates.append(SubtitlePlacement(alignment=2, x=play_res_x // 2, y=bottom_anchor_y))
 
-    # above-mouth (anchor bottom-center)
-    if mouth_ymin is not None:
-        y = int(mouth_ymin * play_res_y) - int(max(play_res_y * 0.03, 70))
-        # Keep within safe vertical range.
-        y = max(top_margin + box_h, min(bottom_anchor_y, y))
-        candidates.append(SubtitlePlacement(alignment=2, x=play_res_x // 2, y=y))
+        # top-center
+        candidates.append(SubtitlePlacement(alignment=8, x=play_res_x // 2, y=top_margin))
 
-    if not face_bboxes:
-        # No faces: use bottom-center but if UI score suggests lower-third graphics, push up a bit.
-        if ui_score > 0.12:
-            shift = int(max(play_res_y * 0.05, 70))
+        # above-mouth (anchor bottom-center)
+        if mouth_ymin is not None:
+            y = int(mouth_ymin * play_res_y) - int(max(play_res_y * 0.03, 70))
+            # Keep within safe vertical range.
+            y = max(top_margin + box_h, min(bottom_anchor_y, y))
+            candidates.append(SubtitlePlacement(alignment=2, x=play_res_x // 2, y=y))
+
+        if not face_bboxes:
+            # No faces: use bottom-center but if UI score suggests lower-third graphics, push up a bit.
+            if ui_score > 0.12:
+                shift = int(max(play_res_y * 0.05, 70))
+                return SubtitlePlacement(
+                    alignment=2,
+                    x=play_res_x // 2,
+                    y=max(top_margin + box_h, bottom_anchor_y - shift),
+                    face_overlap_ratio=0.0,
+                    ui_overlap_ratio=0.0,
+                    ui_score=ui_score,
+                )
+            c = candidates[0]
             return SubtitlePlacement(
-                alignment=2,
-                x=play_res_x // 2,
-                y=max(top_margin + box_h, bottom_anchor_y - shift),
+                alignment=c.alignment,
+                x=c.x,
+                y=c.y,
                 face_overlap_ratio=0.0,
                 ui_overlap_ratio=0.0,
                 ui_score=ui_score,
             )
-        c = candidates[0]
-        return SubtitlePlacement(
-            alignment=c.alignment,
-            x=c.x,
-            y=c.y,
-            face_overlap_ratio=0.0,
-            ui_overlap_ratio=0.0,
-            ui_score=ui_score,
-        )
 
-    def face_overlap_proxy(placement: SubtitlePlacement) -> float:
-        # Fast proxy (single aggregated bbox) used only when CV deps are missing.
-        if placement.alignment == 8:
-            y0 = placement.y
-            y1 = placement.y + box_h
+        def face_overlap_proxy(placement: SubtitlePlacement) -> float:
+            # Fast proxy (single aggregated bbox) used only when CV deps are missing.
+            if placement.alignment == 8:
+                y0 = placement.y
+                y1 = placement.y + box_h
+            else:
+                y0 = placement.y - box_h
+                y1 = placement.y
+
+            y0_rel = y0 / play_res_y
+            y1_rel = y1 / play_res_y
+
+            sub_x0 = 0.08
+            sub_x1 = 0.92
+
+            worst = 0.0
+            for xmin, ymin, xmax, ymax in face_bboxes:
+                inter_y = max(0.0, min(y1_rel, ymax) - max(y0_rel, ymin))
+                inter_x = max(0.0, min(sub_x1, xmax) - max(sub_x0, xmin))
+                inter = inter_x * inter_y
+                area = max(1e-6, (xmax - xmin) * (ymax - ymin))
+                worst = max(worst, inter / area)
+            return worst
+
+        best = None
+        best_score = -1e9
+
+        # Compute p95 overlap metrics per candidate when frames exist.
+        # This is best-effort: if CV deps are missing, we fall back to the proxy.
+        face_p95_by_candidate: list[float] = []
+        ui_p95_by_candidate: list[float] = []
+
+        if frames:
+            for c in candidates:
+                f95, u95 = _compute_overlap_metrics(
+                    frame_paths=frames,
+                    placement=c,
+                    play_res_x=play_res_x,
+                    play_res_y=play_res_y,
+                    box_h_px=box_h,
+                    ui_safe_ymin=ui_safe_ymin,
+                )
+                face_p95_by_candidate.append(f95)
+                ui_p95_by_candidate.append(u95)
         else:
-            y0 = placement.y - box_h
-            y1 = placement.y
+            for c in candidates:
+                face_p95_by_candidate.append(face_overlap_proxy(c))
+                ui_p95_by_candidate.append(0.0)
 
-        y0_rel = y0 / play_res_y
-        y1_rel = y1 / play_res_y
+        for idx, c in enumerate(candidates):
+            face_p95 = face_p95_by_candidate[idx]
+            ui_p95 = ui_p95_by_candidate[idx]
 
-        sub_x0 = 0.08
-        sub_x1 = 0.92
+            # Penalize face overlap heavily, then UI overlap.
+            score = 1.0 - 4.0 * face_p95 - 2.5 * ui_p95
 
-        worst = 0.0
-        for xmin, ymin, xmax, ymax in face_bboxes:
-            inter_y = max(0.0, min(y1_rel, ymax) - max(y0_rel, ymin))
-            inter_x = max(0.0, min(sub_x1, xmax) - max(sub_x0, xmin))
-            inter = inter_x * inter_y
-            area = max(1e-6, (xmax - xmin) * (ymax - ymin))
-            worst = max(worst, inter / area)
-        return worst
+            # Keep the heuristic score as a weak prior.
+            if c.alignment == 2:
+                score -= 0.75 * ui_score
+                score += 0.1
 
-    best = None
-    best_score = -1e9
+            if score > best_score:
+                best_score = score
+                best = c
 
-    # Compute p95 overlap metrics per candidate when frames exist.
-    # This is best-effort: if CV deps are missing, we fall back to the proxy.
-    face_p95_by_candidate: list[float] = []
-    ui_p95_by_candidate: list[float] = []
+        if best is None:
+            c = candidates[0]
+            f95, u95 = (
+                (face_p95_by_candidate[0], ui_p95_by_candidate[0])
+                if face_p95_by_candidate
+                else (0.0, 0.0)
+            )
+            return SubtitlePlacement(
+                alignment=c.alignment,
+                x=c.x,
+                y=c.y,
+                face_overlap_ratio=f95,
+                ui_overlap_ratio=u95,
+                ui_score=ui_score,
+            )
 
-    if frames:
-        for c in candidates:
-            f95, u95 = _compute_overlap_metrics(
+        chosen_idx = candidates.index(best)
+        face_p95 = face_p95_by_candidate[chosen_idx]
+        ui_p95 = ui_p95_by_candidate[chosen_idx]
+
+        # Safety: if we chose bottom and the measured UI overlap is non-zero, shift up.
+        if best.alignment == 2 and ui_p95 > 0.0:
+            shift_step = int(max(play_res_y * 0.05, 70))
+            best = SubtitlePlacement(
+                alignment=2,
+                x=best.x,
+                y=max(top_margin + box_h, best.y - shift_step),
+            )
+            face_p95, ui_p95 = _compute_overlap_metrics(
                 frame_paths=frames,
-                placement=c,
+                placement=best,
                 play_res_x=play_res_x,
                 play_res_y=play_res_y,
                 box_h_px=box_h,
                 ui_safe_ymin=ui_safe_ymin,
             )
-            face_p95_by_candidate.append(f95)
-            ui_p95_by_candidate.append(u95)
-    else:
-        for c in candidates:
-            face_p95_by_candidate.append(face_overlap_proxy(c))
-            ui_p95_by_candidate.append(0.0)
 
-    for idx, c in enumerate(candidates):
-        face_p95 = face_p95_by_candidate[idx]
-        ui_p95 = ui_p95_by_candidate[idx]
+        # Safety: if face overlap is still too high, shift up once.
+        if best.alignment == 2 and face_p95 > 0.10:
+            shift = int(max(play_res_y * 0.05, 70))
+            best = SubtitlePlacement(alignment=2, x=best.x, y=max(top_margin + box_h, best.y - shift))
+            face_p95, ui_p95 = _compute_overlap_metrics(
+                frame_paths=frames,
+                placement=best,
+                play_res_x=play_res_x,
+                play_res_y=play_res_y,
+                box_h_px=box_h,
+                ui_safe_ymin=ui_safe_ymin,
+            )
 
-        # Penalize face overlap heavily, then UI overlap.
-        score = 1.0 - 4.0 * face_p95 - 2.5 * ui_p95
-
-        # Keep the heuristic score as a weak prior.
-        if c.alignment == 2:
-            score -= 0.75 * ui_score
-            score += 0.1
-
-        if score > best_score:
-            best_score = score
-            best = c
-
-    if best is None:
-        c = candidates[0]
-        f95, u95 = (face_p95_by_candidate[0], ui_p95_by_candidate[0]) if face_p95_by_candidate else (0.0, 0.0)
-        return SubtitlePlacement(
-            alignment=c.alignment,
-            x=c.x,
-            y=c.y,
-            face_overlap_ratio=f95,
-            ui_overlap_ratio=u95,
+        best = SubtitlePlacement(
+            alignment=best.alignment,
+            x=best.x,
+            y=best.y,
+            face_overlap_ratio=face_p95,
+            ui_overlap_ratio=ui_p95,
             ui_score=ui_score,
         )
 
-    chosen_idx = candidates.index(best)
-    face_p95 = face_p95_by_candidate[chosen_idx]
-    ui_p95 = ui_p95_by_candidate[chosen_idx]
-
-    # Safety: if we chose bottom and the measured UI overlap is non-zero, shift up.
-    if best.alignment == 2 and ui_p95 > 0.0:
-        shift_step = int(max(play_res_y * 0.05, 70))
-        best = SubtitlePlacement(
-            alignment=2,
+        logger.info(
+            "subtitles.placement",
+            alignment=best.alignment,
             x=best.x,
-            y=max(top_margin + box_h, best.y - shift_step),
-        )
-        face_p95, ui_p95 = _compute_overlap_metrics(
-            frame_paths=frames,
-            placement=best,
-            play_res_x=play_res_x,
-            play_res_y=play_res_y,
-            box_h_px=box_h,
-            ui_safe_ymin=ui_safe_ymin,
+            y=best.y,
+            ui_score=ui_score,
+            face_overlap_ratio=face_p95,
+            ui_overlap_ratio=ui_p95,
+            face_detected=True,
         )
 
-    # Safety: if face overlap is still too high, shift up once.
-    if best.alignment == 2 and face_p95 > 0.10:
-        shift = int(max(play_res_y * 0.05, 70))
-        best = SubtitlePlacement(alignment=2, x=best.x, y=max(top_margin + box_h, best.y - shift))
-        face_p95, ui_p95 = _compute_overlap_metrics(
-            frame_paths=frames,
-            placement=best,
-            play_res_x=play_res_x,
-            play_res_y=play_res_y,
-            box_h_px=box_h,
-            ui_safe_ymin=ui_safe_ymin,
-        )
-
-    best = SubtitlePlacement(
-        alignment=best.alignment,
-        x=best.x,
-        y=best.y,
-        face_overlap_ratio=face_p95,
-        ui_overlap_ratio=ui_p95,
-        ui_score=ui_score,
-    )
-
-    logger.info(
-        "subtitles.placement",
-        alignment=best.alignment,
-        x=best.x,
-        y=best.y,
-        ui_score=ui_score,
-        face_overlap_ratio=face_p95,
-        ui_overlap_ratio=ui_p95,
-        face_detected=True,
-    )
-
-    return best
+        return best
+    finally:
+        if frames_dir is not None:
+            shutil.rmtree(frames_dir, ignore_errors=True)

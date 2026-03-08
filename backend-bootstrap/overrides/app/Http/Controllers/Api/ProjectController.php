@@ -225,6 +225,42 @@ class ProjectController
         ]);
     }
 
+    public function retry(Request $request, Project $project, VideoWorkerClient $videoWorker): JsonResponse
+    {
+        $oldJobId = is_string($project->worker_job_id) ? $project->worker_job_id : null;
+
+        // Best-effort cancellation of the existing worker job (if any).
+        if (is_string($oldJobId) && $oldJobId !== '') {
+            $videoWorker->cancelJob($oldJobId);
+        }
+
+        PipelineEvent::log(
+            type: 'project.retry.requested',
+            payload: [
+                'old_job_id' => $oldJobId,
+            ],
+            project: $project,
+        );
+
+        // Set a placeholder job_id so that any late callbacks from the old job are ignored
+        // until SubmitVideoWorkerJob assigns a fresh job_id.
+        $project->forceFill([
+            'worker_job_id' => 'retry-'.(string) Str::uuid(),
+            'status' => ProjectStatus::queued,
+            'stage' => 'queued',
+            'progress_percent' => 0,
+            'last_log_message' => 'Queued for processing (retry)',
+            'error' => null,
+        ])->save();
+
+        SubmitVideoWorkerJob::dispatch((string) $project->id)->afterCommit();
+
+        return response()->json([
+            'ok' => true,
+            'id' => (string) $project->id,
+        ]);
+    }
+
     public function debug(Request $request, Project $project): JsonResponse
     {
         $project->load([

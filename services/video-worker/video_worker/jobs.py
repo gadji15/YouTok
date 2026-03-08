@@ -958,11 +958,14 @@ def process_job(
                     )
 
             def _render_progress(evt: dict) -> None:
+                nonlocal current_stage, current_progress
+
                 clip_id = str(evt.get("clip_id") or "")
                 idx = int(evt.get("index") or 0)
                 total = int(evt.get("total") or 0)
 
                 ev = str(evt.get("event") or "")
+                phase = str(evt.get("phase") or "")
 
                 # Render is the longest stage. Emit granular progress to help debug stalls.
                 if ev == "render.clip.progress":
@@ -977,10 +980,17 @@ def process_job(
                     )
                 elif ev == "render.clip.heartbeat":
                     running = float(evt.get("running_seconds") or 0.0)
+
+                    label = "Rendering"
+                    if phase == "measuring_subtitle_overlap":
+                        label = "Measuring subtitle overlap"
+                    elif phase:
+                        label = phase.replace("_", " ").strip().capitalize()
+
                     msg = (
-                        f"Rendering clip {idx}/{total} ({clip_id}) — still running ({int(running)}s)"
+                        f"{label} clip {idx}/{total} ({clip_id}) — still running ({int(running)}s)"
                         if clip_id
-                        else f"Rendering clip {idx}/{total} — still running ({int(running)}s)"
+                        else f"{label} clip {idx}/{total} — still running ({int(running)}s)"
                     )
                 else:
                     msg = f"Rendering clip {idx}/{total} ({clip_id})" if clip_id else f"Rendering clip {idx}/{total}"
@@ -995,6 +1005,9 @@ def process_job(
                 if ev == "render.clip.progress" and total > 0:
                     frac = float(evt.get("progress") or 0.0)
                     pct = min(99, max(base, base + int(round(9.0 * min(1.0, max(0.0, frac)) / float(total)))))
+
+                current_stage = "render_clips"
+                current_progress = int(pct)
 
                 # Include the raw event in the message for later inspection.
                 _best_effort_progress_callback(
@@ -1057,6 +1070,21 @@ def process_job(
 
         rendered = run_with_stage_retries("render_clips", _do_render)
 
+        raise_if_cancelled()
+
+        current_stage = "finalize"
+        current_progress = 99
+        _best_effort_progress_callback(
+            ctx=ctx,
+            stage=current_stage,
+            progress_percent=current_progress,
+            message="Finalizing artifacts",
+            timeout_seconds=settings.callback_timeout_seconds,
+            max_retries=settings.callback_max_retries,
+            retry_backoff_seconds=settings.callback_retry_backoff_seconds,
+            logger=logger,
+        )
+
         def _load_quality_summary(video_path: str | None) -> dict | None:
             if not video_path:
                 return None
@@ -1086,9 +1114,26 @@ def process_job(
         storage_root = Path(settings.storage_path)
         key_prefix = s3_cfg.prefix if s3_cfg is not None else ""
         cleanup_local = bool(settings.s3_cleanup_local)
+        blocking_uploads = s3_cfg is not None and cleanup_local
+
+        if blocking_uploads:
+            raise_if_cancelled()
+
+            current_stage = "upload_artifacts"
+            current_progress = 99
+            _best_effort_progress_callback(
+                ctx=ctx,
+                stage=current_stage,
+                progress_percent=current_progress,
+                message="Uploading artifacts to object storage",
+                timeout_seconds=settings.callback_timeout_seconds,
+                max_retries=settings.callback_max_retries,
+                retry_backoff_seconds=settings.callback_retry_backoff_seconds,
+                logger=logger,
+            )
 
         clip_artifacts: list[ClipArtifact] = []
-        for c in rendered:
+        for clip_idx, c in enumerate(rendered, start=1):
             raise_if_cancelled()
 
             clip_id = str(c.get("clip_id") or "")
@@ -1099,7 +1144,18 @@ def process_job(
             if q is not None:
                 c = {**c, "quality_summary": q}
 
-            if s3_cfg is not None:
+            if blocking_uploads:
+                _best_effort_progress_callback(
+                    ctx=ctx,
+                    stage="upload_artifacts",
+                    progress_percent=99,
+                    message=f"Uploading clip {clip_idx}/{len(rendered)} ({clip_id})" if clip_id else f"Uploading clip {clip_idx}/{len(rendered)}",
+                    timeout_seconds=settings.callback_timeout_seconds,
+                    max_retries=settings.callback_max_retries,
+                    retry_backoff_seconds=settings.callback_retry_backoff_seconds,
+                    logger=logger.bind(clip_id=clip_id or None),
+                )
+
                 c = {
                     **c,
                     "video_path": _maybe_upload_path_to_s3(
@@ -1137,7 +1193,7 @@ def process_job(
         source_metadata_json_path = str(ctx.source_metadata_json_path) if ctx.source_metadata_json_path.exists() else None
         source_thumbnail_path = str(ctx.source_thumbnail_path) if ctx.source_thumbnail_path.exists() else None
 
-        if s3_cfg is not None:
+        if blocking_uploads:
             source_video_path = _maybe_upload_path_to_s3(
                 path_str=source_video_path,
                 storage_root=storage_root,
@@ -1246,14 +1302,153 @@ def process_job(
         _best_effort_callback(
             ctx=ctx,
             payload=completed_payload,
-            timeout_seconds=settings.callback_timeout_seconds,
+            timeout_seconds=max(settings.callback_timeout_seconds, 120.0),
             max_retries=settings.callback_max_retries,
             retry_backoff_seconds=settings.callback_retry_backoff_seconds,
             logger=logger,
         )
 
+        final_payload = completed_payload
+
+        # If S3 is enabled but we are not deleting local artifacts, don't block the user-facing
+        # "completed" callback on potentially slow uploads. Upload in the background and send a
+        # follow-up callback with updated URLs.
+        if s3_cfg is not None and not blocking_uploads:
+            uploaded_clips: list[ClipArtifact] = []
+            for clip_idx, ca in enumerate(clip_artifacts, start=1):
+                raise_if_cancelled()
+
+                d = ca.model_dump(mode="json", exclude_none=True)
+
+                clip_id = str(d.get("clip_id") or "")
+
+                d["video_path"] = _maybe_upload_path_to_s3(
+                    path_str=d.get("video_path"),
+                    storage_root=storage_root,
+                    key_prefix=key_prefix,
+                    cleanup_local=cleanup_local,
+                    logger=logger,
+                )
+                d["subtitles_ass_path"] = _maybe_upload_path_to_s3(
+                    path_str=d.get("subtitles_ass_path"),
+                    storage_root=storage_root,
+                    key_prefix=key_prefix,
+                    cleanup_local=cleanup_local,
+                    logger=logger,
+                )
+                d["subtitles_srt_path"] = _maybe_upload_path_to_s3(
+                    path_str=d.get("subtitles_srt_path"),
+                    storage_root=storage_root,
+                    key_prefix=key_prefix,
+                    cleanup_local=cleanup_local,
+                    logger=logger,
+                )
+
+                uploaded_clips.append(ClipArtifact(**d))
+
+                if clip_id:
+                    logger.info("s3.clip_uploaded", clip_id=clip_id, clip_idx=clip_idx, clip_count=len(clip_artifacts))
+
+            source_video_path = _maybe_upload_path_to_s3(
+                path_str=artifacts.source_video_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            audio_path = _maybe_upload_path_to_s3(
+                path_str=artifacts.audio_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            transcript_json_path = _maybe_upload_path_to_s3(
+                path_str=artifacts.transcript_json_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            subtitles_srt_path = _maybe_upload_path_to_s3(
+                path_str=artifacts.subtitles_srt_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            clips_json_path = _maybe_upload_path_to_s3(
+                path_str=artifacts.clips_json_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            words_json_path = _maybe_upload_path_to_s3(
+                path_str=artifacts.words_json_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            segments_json_path = _maybe_upload_path_to_s3(
+                path_str=artifacts.segments_json_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            source_metadata_json_path = _maybe_upload_path_to_s3(
+                path_str=artifacts.source_metadata_json_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+            source_thumbnail_path = _maybe_upload_path_to_s3(
+                path_str=artifacts.source_thumbnail_path,
+                storage_root=storage_root,
+                key_prefix=key_prefix,
+                cleanup_local=cleanup_local,
+                logger=logger,
+            )
+
+            uploaded_artifacts = JobArtifacts(
+                source_video_path=source_video_path,
+                audio_path=audio_path,
+                transcript_json_path=transcript_json_path,
+                subtitles_srt_path=subtitles_srt_path,
+                clips_json_path=clips_json_path,
+                words_json_path=words_json_path,
+                segments_json_path=segments_json_path,
+                source_metadata_json_path=source_metadata_json_path,
+                source_thumbnail_path=source_thumbnail_path,
+                clips=uploaded_clips,
+            )
+
+            uploaded_payload = JobCallbackPayload(
+                job_id=job_id,
+                project_id=project_id,
+                status=JobStatus.completed,
+                stage="completed",
+                progress_percent=100,
+                message="Job completed (S3 URLs updated)",
+                artifacts=uploaded_artifacts,
+            )
+
+            _best_effort_callback(
+                ctx=ctx,
+                payload=uploaded_payload,
+                timeout_seconds=max(settings.callback_timeout_seconds, 120.0),
+                max_retries=settings.callback_max_retries,
+                retry_backoff_seconds=settings.callback_retry_backoff_seconds,
+                logger=logger,
+            )
+
+            final_payload = uploaded_payload
+
         logger.info("job.completed", clip_count=len(rendered))
-        return completed_payload.model_dump(mode="json")
+        return final_payload.model_dump(mode="json")
     except JobCancelledError:
         logger.info("job.cancelled")
 

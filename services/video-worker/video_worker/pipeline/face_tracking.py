@@ -45,9 +45,11 @@ def estimate_face_centers_x(
     except Exception:
         return []
 
-    frames_dir = work_dir / "frames"
-    if frames_dir.exists():
-        shutil.rmtree(frames_dir)
+    import uuid
+
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    frames_dir = work_dir / f"frames_{uuid.uuid4().hex}"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     detector = None
