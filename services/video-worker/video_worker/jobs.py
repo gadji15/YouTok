@@ -965,6 +965,7 @@ def process_job(
                 total = int(evt.get("total") or 0)
 
                 ev = str(evt.get("event") or "")
+                phase = str(evt.get("phase") or "")
 
                 # Render is the longest stage. Emit granular progress to help debug stalls.
                 if ev == "render.clip.progress":
@@ -979,10 +980,17 @@ def process_job(
                     )
                 elif ev == "render.clip.heartbeat":
                     running = float(evt.get("running_seconds") or 0.0)
+
+                    label = "Rendering"
+                    if phase == "measuring_subtitle_overlap":
+                        label = "Measuring subtitle overlap"
+                    elif phase:
+                        label = phase.replace("_", " ").strip().capitalize()
+
                     msg = (
-                        f"Rendering clip {idx}/{total} ({clip_id}) — still running ({int(running)}s)"
+                        f"{label} clip {idx}/{total} ({clip_id}) — still running ({int(running)}s)"
                         if clip_id
-                        else f"Rendering clip {idx}/{total} — still running ({int(running)}s)"
+                        else f"{label} clip {idx}/{total} — still running ({int(running)}s)"
                     )
                 else:
                     msg = f"Rendering clip {idx}/{total} ({clip_id})" if clip_id else f"Rendering clip {idx}/{total}"

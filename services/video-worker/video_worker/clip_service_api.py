@@ -195,6 +195,7 @@ def render(req: RenderRequest) -> dict[str, Any]:
                 return
 
             ev = str(evt.get("event") or "")
+            phase = str(evt.get("phase") or "")
             clip_id = str(evt.get("clip_id") or "")
             idx = int(evt.get("index") or 0)
             total = int(evt.get("total") or 0)
@@ -231,7 +232,14 @@ def render(req: RenderRequest) -> dict[str, Any]:
                 last_sent_at = now
             elif ev == "render.clip.heartbeat":
                 running = float(evt.get("running_seconds") or 0.0)
-                msg = f"Rendering clip {idx}/{total} ({clip_id}) — still running ({int(running)}s)"
+
+                label = "Rendering"
+                if phase == "measuring_subtitle_overlap":
+                    label = "Measuring subtitle overlap"
+                elif phase:
+                    label = phase.replace("_", " ").strip().capitalize()
+
+                msg = f"{label} clip {idx}/{total} ({clip_id}) — still running ({int(running)}s)"
 
                 now = time.time()
                 if now - last_sent_at < 30.0:

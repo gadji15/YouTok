@@ -355,6 +355,13 @@ def measure_overlap_p95_for_video(
     if not frames:
         return 0.0, 0.0
 
+    # Cap the number of frames we analyze to avoid very long runtimes on long clips.
+    # (This is an approximate metric; evenly sampling is sufficient.)
+    max_frames = 180
+    if len(frames) > max_frames:
+        step = max(1, int(len(frames) / max_frames))
+        frames = frames[::step]
+
     frames_dir = frames[0].parent
 
     try:
@@ -408,6 +415,12 @@ def choose_subtitle_placement(
         end_seconds=clip_end_seconds,
         work_dir=work_dir,
     )
+
+    # Cap frame count to keep this selection step bounded on long clips.
+    max_frames = 120
+    if len(frames) > max_frames:
+        step = max(1, int(len(frames) / max_frames))
+        frames = frames[::step]
 
     frames_dir = frames[0].parent if frames else None
 
