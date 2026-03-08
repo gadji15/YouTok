@@ -19,6 +19,7 @@ Common:
 
 - `VIDEO_WORKER_REDIS_URL` (required) e.g. `redis://redis:6379/0`
 - `VIDEO_WORKER_QUEUE_NAME` (default: `video-worker`)
+- `VIDEO_WORKER_RQ_JOB_TIMEOUT_SECONDS` (default: `2700` / 45 minutes). Increase this for real workloads.
 - `VIDEO_WORKER_STORAGE_PATH` (default: `/shared/storage`)
 - `VIDEO_WORKER_WHISPER_MODEL` (default: `base`)
 - `VIDEO_WORKER_WHISPER_DEVICE` (default: `auto`; one of `auto`, `cpu`, `cuda`, `mps`)

@@ -105,6 +105,8 @@
     },
     "actions": {
       "retry": "Relancer",
+      "retrying": "Relance…",
+      "retryConfirm": "Relancer ce projet ? Le job en cours (s'il existe) sera annulé et le traitement redémarrera.",
       "delete": "Supprimer",
       "deleteConfirm": "Supprimer ce projet et tous ses clips ? Si un traitement est en cours, le job sera annulé. Cette action est irréversible.",
       "deleting": "Suppression…"

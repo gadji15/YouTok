@@ -20,6 +20,7 @@ import { PageHeader } from "@/ui/shell/PageHeader";
 import { PipelineProgress } from "@/ui/shell/PipelineProgress";
 
 import { DeleteProjectButton } from "./ui/DeleteProjectButton";
+import { RetryProjectButton } from "./ui/RetryProjectButton";
 import { ProjectTracePanel } from "./ui/ProjectTracePanel";
 
 type ProjectStatus = ApiProjectStatus;
@@ -126,7 +127,7 @@ export default async function ProjectDetailsPage({
                 failed: t("status.failed"),
               }}
             />
-            <Button disabled>{t("actions.retry")}</Button>
+            <RetryProjectButton projectId={project.id} />
             <DeleteProjectButton
               projectId={project.id}
               redirectHref={`/${locale}/projects`}
