@@ -42,7 +42,8 @@ class ProjectApiRetryTest extends TestCase
         $this->assertSame(ProjectStatus::queued, $project->status);
         $this->assertSame('queued', $project->stage);
         $this->assertSame(0, $project->progress_percent);
-        $this->assertNull($project->worker_job_id);
+        $this->assertNotNull($project->worker_job_id);
+        $this->assertStringStartsWith('retry-', (string) $project->worker_job_id);
         $this->assertNull($project->error);
 
         Bus::assertDispatched(SubmitVideoWorkerJob::class, function (SubmitVideoWorkerJob $job) use ($project): bool {

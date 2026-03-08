@@ -242,9 +242,10 @@ class ProjectController
             project: $project,
         );
 
-        // Clear job_id to ensure any late callbacks from the old job are ignored.
+        // Set a placeholder job_id so that any late callbacks from the old job are ignored
+        // until SubmitVideoWorkerJob assigns a fresh job_id.
         $project->forceFill([
-            'worker_job_id' => null,
+            'worker_job_id' => 'retry-'.(string) Str::uuid(),
             'status' => ProjectStatus::queued,
             'stage' => 'queued',
             'progress_percent' => 0,

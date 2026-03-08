@@ -219,6 +219,9 @@ services:
   redis:
     profiles: ["video-worker", "tiktok-bot"]
     image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -252,10 +255,12 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
 
 volumes:
   db_data:
   video_worker_shared:
   video_worker_torch_cache:
   video_worker_whisper_cache:
+  tiktok_bot_storage:
+  redis_data:
